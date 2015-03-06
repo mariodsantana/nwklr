@@ -369,12 +369,8 @@ public class nwklr extends JApplet {
 		filterButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				// vv.stop();
 				g.setFilter(keyInput.getText(), valInput.getText());
 				mLayoutChooser.doAction(g);
-				;
-				// vv.setGraphLayout(new ).applyFilter((Graph)g);
-				// vv.restart();
 			}
 		});
 
