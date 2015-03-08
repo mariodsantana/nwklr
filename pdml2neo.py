@@ -41,7 +41,7 @@ import json
 """
 Nodes will be addresses (eth/IP/etc) for sender and recipient
 Edges will be comms (packets or streams) between nodes
-  also have "aka" nodes linking addresses that have been seen in the same packet (e.g., in the eth & IP addresses) 
+	also have "aka" nodes linking addresses that have been seen in the same packet (e.g., in the eth & IP addresses) 
 
 for packets, we end up with (src)-[:pktTo]->(dst)
 	each such edge contains the props of all packet field name/value pairs
@@ -115,7 +115,7 @@ class pdml2neoContentHandler(sax.ContentHandler):
 			sys.exit()
 		# If this is an addressing field, create host/node
 		# Highest level address wins - i.e., prefer IP addr over eth addr - because pdml presents them in that order
-		#    TODO verify this...
+		#    TODO - verify there are no exceptions to this
 		addrType = False
 		aka = False
 		if (attrs["name"] == "eth.src"):
@@ -126,7 +126,7 @@ class pdml2neoContentHandler(sax.ContentHandler):
 			addrType = ("ip","src")
 		elif (attrs["name"] == "ip.dst"):
 			addrType = ("ip","dst")
-		if not addrType: return # not an address we understand
+		else: return # not an address we understand
 		if addrType[1] == "src":
 			aka = self.srcN
 		elif addrType[1] == "dst":
@@ -142,7 +142,7 @@ class pdml2neoContentHandler(sax.ContentHandler):
 		if 'type' not in node.properties:
 			# if the merge command created this host/node, there would be no type prop.  let's add it
 			node.properties['type'] = addrType[0]
-			node.push()
+			node.properties.push()
 		elif node.properties['type'] != addrType[0]:
 			print "got an existing host/node with a wrong type property: {}".format(node)
 			print("\t{}: {}".format(k,v) for k,v in node.properties.items())
@@ -249,25 +249,25 @@ class pdml2neoContentHandler(sax.ContentHandler):
 twirls = [ '/', '-', '\\', '|' ]
 at_twirl = 0
 def twirl():
-    global at_twirl
-    this_twirl = twirls[at_twirl % len(twirls)]
-    last_twirl = twirls[(at_twirl-1) % len(twirls)]
-    if at_twirl == 0:
-        backup = ""
-    else:
-        backup = '\b' * (len(last_twirl) + 1)
-    print "{}{}".format(backup,this_twirl),
-    sys.stdout.flush()
-    at_twirl += 1
+	global at_twirl
+	this_twirl = twirls[at_twirl % len(twirls)]
+	last_twirl = twirls[(at_twirl-1) % len(twirls)]
+	if at_twirl == 0:
+		backup = ""
+	else:
+		backup = '\b' * (len(last_twirl) + 1)
+	print "{}{}".format(backup,this_twirl),
+	sys.stdout.flush()
+	at_twirl += 1
 def del_twirl():
-    global at_twirl
-    if at_twirl == 0:
-        return
-    last_twirl = twirls[(at_twirl-1) % len(twirls)]
-    backup = '\b' * (len(last_twirl) + 1)
-    print "{}{}{}".format(backup,' '*len(last_twirl),backup),
-    sys.stdout.flush()
-    at_twirl = 0
+	global at_twirl
+	if at_twirl == 0:
+		return
+	last_twirl = twirls[(at_twirl-1) % len(twirls)]
+	backup = '\b' * (len(last_twirl) + 1)
+	print "{}{}{}".format(backup,' '*len(last_twirl),backup),
+	sys.stdout.flush()
+	at_twirl = 0
 ###############################
 ## END MDS twirling protocol ##
 ###############################
@@ -292,6 +292,7 @@ print "done."
 
 
 print "Creating indexes...",
+sys.stdout.flush()
 G = CH.getGraph()
 G.cypher.execute('create index on :pktTo(inStr)')
 G.cypher.execute('create index on :Host(name)')
@@ -301,6 +302,7 @@ print "done."
 print "G has {0} nodes and {1} edges".format(G.order,G.size)
 gfile = infile[:infile.rfind('.')]+".geoff"
 print "Writing G in Geoff to {}... ".format(gfile),
+sys.stdout.flush()
 with open(gfile,'w') as g:
 	writer = GeoffWriter(g)
 	writer.write(G.match())
