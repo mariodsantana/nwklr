@@ -103,13 +103,13 @@ class pdml2neoContentHandler(sax.ContentHandler):
 		elif (attrs["name"] == "data"):
 			# value is the data passed, encoded as a hex byte string TODO should we convert to raw bytes, or let the gui have that option?
 			self.pktProps[attrs["name"]] = "0x"+attrs["value"]
+		elif ("show" in attrs):
+			# prefer a showable value if available
+			self.pktProps[attrs["name"]] = attrs["show"]
 		elif ("value" in attrs):
-			# value is a hex value - prefer it because "show" isn't defined to be hex, could be anything
+			# if no showable value, use hex value - prefer it because "show" isn't defined to be hex, could be anything
 			#self.pktProps[attrs["name"]] = int(attrs["value"],16) # XXX let's keep this value in hex for now, keep the 'name' prop as a string
 			self.pktProps[attrs["name"]] = "0x"+attrs["value"]			
-		elif ("show" in attrs):
-			# if there's no value field, we can use the show field as text
-			self.pktProps[attrs["name"]] = attrs["show"]
 		else:
 			print "field {0} has no value or show attributes:\n\tattribute keys: {1}".format(attrs["name"],attrs.keys())
 			sys.exit()
@@ -300,12 +300,12 @@ print "done."
 
 
 print "G has {0} nodes and {1} edges".format(G.order,G.size)
-gfile = infile[:infile.rfind('.')]+".geoff"
-print "Writing G in Geoff to {}... ".format(gfile),
-sys.stdout.flush()
-with open(gfile,'w') as g:
-	writer = GeoffWriter(g)
-	writer.write(G.match())
+#gfile = infile[:infile.rfind('.')]+".geoff"
+#print "Writing G in Geoff to {}... ".format(gfile),
+#sys.stdout.flush()
+#with open(gfile,'w') as g:
+#	writer = GeoffWriter(g)
+#	writer.write(G.match())
 print "done."
 
 # lambda sorts based on peers (sort the peers so whomever is sending, it sorts the same) plus pkt number
