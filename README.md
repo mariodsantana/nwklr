@@ -9,13 +9,20 @@ This script (pdml2neo.py) loads network traffic from a pdml file into a neo4j gr
 
 2. Get you a pcap
 3. Run `tshark -r packets.pcap -T pdml > packets.pdml`
-4. Then make sure the neo4j server is running and run this script
+4. Then make sure the neo4j server is running and run this script (after installing prerequisites)
   ```
 	$ /path/to/neo4j-community-2.1.6/bin/neo4j console &
 	[1] 67777
 	Starting Neo4j Server console-mode...
 	...
 	...
+	$ sudo pip install py2neo
+	Downloading/unpacking py2neo
+	  Downloading py2neo-2.0.6.tar.gz (251kB): 251kB downloaded
+	...
+	...
+	Successfully installed py2neo
+	Cleaning up...
 	$ python pdml2neo.py packets.pdml
 	parsing packets.pdml:  done.
 	Creating indexes... done.
