@@ -53,14 +53,13 @@ each such edge links to all of the packets sent in that stream, like this:
 	in fact, a stream might only contain packets heading in one direction...
 (src) and (dst) - the graph nodes - are hosts.
 	They are identified by address and type, e.g., name="192.168.1.1" type="ip" or name="00ae5c:8b94f2" type="eth"
-	XXX - make sure the "type" property is actually created...seems to be missing?
 If a packet identifies multiple addresses (e.g., both eth and ip) then two nodes are created:
 	but the highest level address (.e.g, ip instead of eth) "wins" and get the pktTo and/or strTo relationships
 	and each address level is linked to the lower address level with an "aka" relationship
 		this way, you can see that the ARP request came from the same host as the DNS request.
 
 TODO
-1. Build a poc gui for hunting through those graphs - IN PROCESS
+1. Build a usable gui for hunting through those graphs - IN PROCESS
 2. Implement UDP stream tracking.  Also ICMP, BOOTP, others
 3. Consider higher-level address nodes, like http.server and http.user-agent, and attaching these to other nodes via "aka" edges
 4. Make different kinds of edges, beyond just data transfer and "aka"
@@ -79,6 +78,23 @@ class pdml2neoContentHandler(sax.ContentHandler):
 	dstN = False # Node of the packets's destination
 	pktProps = False # dict() to gather up all the props as we parse the PDML for this packet
 	unstreamedProtocols = False # dict of frame.protocol entries for which we don't create a stream.  value is count of pkts with that frame.protocol
+
+	'''
+	Utility function adds name/value pair to pktProps, or name/array for names with multiple values
+	'''
+	def addPktProp(self,name,value):
+		if name not in self.pktProps:
+			self.pktProps[name] = value
+		elif type(self.pktProps[name]) == type(list()):
+			self.pktProps[name].append(value)
+			print "name:{}x{}".format(name,len(self.pktProps[name]))
+		else:
+			self.pktProps[name] = [self.pktProps[name],value]
+			print "name:{}x2".format(name)
+
+	'''
+	Process the opening tag of an XML element
+	'''
 	def startElement(self,name,attrs):
 		#if self.pktProps and int(self.pktProps["num"],16) > 10: return # DEBUG let's just do the first 10 packets for now
 		# push the parsley aside
@@ -102,14 +118,14 @@ class pdml2neoContentHandler(sax.ContentHandler):
 			pass # this isn't really a "field" - it only exists to group some real fields
 		elif (attrs["name"] == "data"):
 			# value is the data passed, encoded as a hex byte string TODO should we convert to raw bytes, or let the gui have that option?
-			self.pktProps[attrs["name"]] = "0x"+attrs["value"]
+			self.addPktProp(attrs["name"],"0x"+attrs["value"])
 		elif ("show" in attrs):
 			# prefer a showable value if available
-			self.pktProps[attrs["name"]] = attrs["show"]
+			self.addPktProp(attrs["name"],attrs["show"])
 		elif ("value" in attrs):
 			# if no showable value, use hex value - prefer it because "show" isn't defined to be hex, could be anything
-			#self.pktProps[attrs["name"]] = int(attrs["value"],16) # XXX let's keep this value in hex for now, keep the 'name' prop as a string
-			self.pktProps[attrs["name"]] = "0x"+attrs["value"]			
+			#self.addPktProp(attrs["name"],int(attrs["value"],16) # XXX let's keep this value in hex for now, keep the 'name' prop as a string)
+			self.addPktProp(attrs["name"],"0x"+attrs["value"])
 		else:
 			print "field {0} has no value or show attributes:\n\tattribute keys: {1}".format(attrs["name"],attrs.keys())
 			sys.exit()
@@ -170,6 +186,9 @@ class pdml2neoContentHandler(sax.ContentHandler):
 				sys.exit()
 	# END def startElement
 
+	'''
+	Process the closing tag of an XML element
+	'''
 	def endElement(self,name):
 		# we only need to process end-of-packet
 		if (name != "packet"): return

@@ -8,6 +8,7 @@
 package net.mariosantana.nwklr;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.lang.reflect.Constructor;
@@ -169,8 +170,14 @@ public class nwklr extends JApplet {
 				}
 				// ptr now points to the deepest node specified by the
 				// key-as-treepath. Add the key's value to the text of the node.
-				ptr.setUserObject(ptr.toString() + ": "
-						+ udc.getUserDatum(k).toString());
+				Object userdatum = udc.getUserDatum(k);
+				String userdatumstring;
+				if (userdatum.getClass().getName().equals("[Ljava.lang.String;")) {
+					userdatumstring = Arrays.toString((String[])userdatum);
+				} else {
+					userdatumstring = userdatum.toString();
+				}
+				ptr.setUserObject(ptr.toString() + ": " + userdatumstring);
 			}
 			// redraw the tree!
 			propTree.setModel(new DefaultTreeModel(propRoot));
