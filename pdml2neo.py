@@ -13,7 +13,7 @@ import json
 """
 Nodes will be addresses (eth/IP/etc) for sender and recipient
 Edges will be comms (packets or streams) between nodes
-	also have "aka" nodes linking addresses that have been seen in the same packet (e.g., in the eth & IP addresses) 
+	also have "aka" edge linking addresses that have been seen in the same packet (e.g., in the eth & IP addresses) 
 
 for packets, we end up with (src)-[:pktTo]->(dst)
 	each such edge contains the props of all packet field name/value pairs
