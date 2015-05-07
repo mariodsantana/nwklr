@@ -1,34 +1,6 @@
 #!/usr/bin/python
 # mds.20150205
 # Import a pdml file into a neo4j database
-"""
---------------------[ README
-This script (pdml2neo.py) loads network traffic from a pdml file into a neo4j graph.  Usage:
-1. Get you a pcap
-2. Run tshark -r packets.pcap -T pdml > packets.pdml
-3. Then make sure the neo4j server is running and run this script
-	$ /path/to/neo4j console &
-	[1] 67777
-	Starting Neo4j Server console-mode...
-	...
-	...
-	$ python pdml2neo.py /path/to/packets.pdml
-	parsing /path/to/packets.pdml:  done.
-	Creating indexes... done.
-	G has 1287 nodes and 24421 edges
-	Writing G in Geoff to /path/to/packets.geoff...  done.
-		----[ Note that this script will happily load the same packets into the database over and over...
-4. Then stop the neo4j server and fire up the Jung fat app
-	$ fg 
-	/path/to/neo4j console
-	^C[INFO] ShutdownManager$ShutdownHookHandler - JVM shutdown hook called
-	...
-	...
-	$ java -jar /path/to/nwklr.jar
-		----[ Revel in the fact that this is a quick POC, and let your imagination run away with all the possibilities
-5. Call me up, or tweet my pinterest on github or something, and offer your enthusiastic help!
---------------------[ /README
-"""
 
 from py2neo import Graph, Node, Relationship
 from py2neo.ext.geoff import GeoffWriter
@@ -46,15 +18,15 @@ Edges will be comms (packets or streams) between nodes
 for packets, we end up with (src)-[:pktTo]->(dst)
 	each such edge contains the props of all packet field name/value pairs
 	as well as a prop named inStr with the neo4j url of the strTo (see below) of which it is a part
-TODO some fields are duped (e.g., ip.addr) and should be an array of vals
+	some fields are duped (e.g., ip.addr) and are stored as an array of vals
 for streams, we end up with (src)-[:strTo]->(dst)
 each such edge links to all of the packets sent in that stream, like this:
 	the initiator of a stream is probably the src address in the earliest packet of that stream
 	in fact, a stream might only contain packets heading in one direction...
 (src) and (dst) - the graph nodes - are hosts.
 	They are identified by address and type, e.g., name="192.168.1.1" type="ip" or name="00ae5c:8b94f2" type="eth"
-If a packet identifies multiple addresses (e.g., both eth and ip) then two nodes are created:
-	but the highest level address (.e.g, ip instead of eth) "wins" and get the pktTo and/or strTo relationships
+If a packet identifies multiple address types (e.g., both eth and ip) then two nodes are created:
+	but the highest level address (e.g., ip instead of eth) "wins" and get the pktTo and/or strTo relationships
 	and each address level is linked to the lower address level with an "aka" relationship
 		this way, you can see that the ARP request came from the same host as the DNS request.
 
