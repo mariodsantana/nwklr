@@ -29,19 +29,6 @@ If a packet identifies multiple address types (e.g., both eth and ip) then two n
 	but the highest level address (e.g., ip instead of eth) "wins" and get the pktTo and/or strTo relationships
 	and each address level is linked to the lower address level with an "aka" relationship
 		this way, you can see that the ARP request came from the same host as the DNS request.
-
-TODO
-1. Build a usable gui for hunting through those graphs - IN PROCESS
-2. Implement UDP stream tracking.  Also ICMP, BOOTP, others
-3. Consider higher-level address nodes, like http.server and http.user-agent, and attaching these to other nodes via "aka" edges
-4. Make different kinds of edges, beyond just data transfer and "aka"
-		e.g., hosts/nodes can point to the most recent DNS query that contained that addr in the resp
-		and hell, DNS queries can point to the previous query or resp that contained the same name (in case DNS resps change for the same query)
-	e.g., nodes with matching ethernet and IP address can point to each other
-5. Allow for creation of a new graph where the nodes are any two packet or stream props (or both can be the same props)
-	and the edges show comms between props.  e.g., the props could be http.server and http.user_agent
-6. Explore interesting concepts
-		What if all props are nodes themselves?  We could more easily visualize what hosts/vertices and edges/comms share prop values.
 """
 class pdml2neoContentHandler(sax.ContentHandler):
 	G = False # neo4j graph
