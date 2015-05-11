@@ -207,7 +207,7 @@ class pdml2neoContentHandler(sax.ContentHandler):
 		pktToR.push()
 	# END def endElement
 
-	def __init__(self,newG = Graph()):
+	def __init__(self,newG = Graph("http://neo4j:password@localhost:7474/db/data/")):
 		self.G = newG
 		self.pktProps = self.srcN = self.dstN = False
 		self.unstreamedProtocols = dict()
@@ -252,6 +252,7 @@ def del_twirl():
 
 P = sax.make_parser()
 CH = pdml2neoContentHandler()
+G = CH.getGraph()
 P.setContentHandler(CH)
 infile = ''
 if (len(sys.argv)>1 and os.path.isfile(sys.argv[1])):
@@ -261,6 +262,15 @@ else:
 if (not len(infile)):
 	print "couldn't figure out a file to read..."
 	sys.exit()
+print "About to parse {0}, shall I NUKE THE DATABASE first? (Y/n) ".format(infile),
+nukem = sys.stdin.readline()
+if (nukem[0] == 'y' or nukem[0] == 'Y' or nukem[0] == '\n'):
+	print "OK, nukes away...",
+	sys.stdout.flush()
+	G.delete_all()
+	print "done."
+else:
+	print "OK, loading this data IN ADDITION to what's in the DB already."
 print "parsing {0}: ".format(infile),
 P.parse(infile)
 del_twirl()
@@ -269,7 +279,6 @@ print "done."
 
 print "Creating indexes...",
 sys.stdout.flush()
-G = CH.getGraph()
 G.cypher.execute('create index on :pktTo(inStr)')
 G.cypher.execute('create index on :Host(name)')
 print "done."
