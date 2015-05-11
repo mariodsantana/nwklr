@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.Collection;
 import java.util.Vector;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.lang.System;
 import java.lang.UnsupportedOperationException;
@@ -79,13 +80,11 @@ public class neoAsJungGraph implements Graph {
 	protected Set mUnfilteredEdges;
 
 	/**
-	 * These strings define the filter to weed out.
-	 *
-	 * @todo use sets of pairs to allow for multiple active filters...or
-	 *       implement using the Jung filtering mechanisms.
+	 * These strings define the filters to weed out.
 	 */
-	protected String mKeyFilter;
-	protected String mValFilter;
+	protected ArrayList<String> mFilterKeys;
+	protected ArrayList<String> mFilterVals;
+	protected ArrayList<Boolean> mFilterNots;
 
 	/**
 	 * Since Neo4J graphs don't have properties, we use some Jung framework
@@ -130,8 +129,9 @@ public class neoAsJungGraph implements Graph {
 	private void initialize() {
 		mNeoGraphOp = GlobalGraphOperations.at(mNeoGraphDb);
 		props = new DefaultUserData();
-		mKeyFilter = "";
-		mValFilter = "";
+		mFilterKeys = new ArrayList<String>();
+		mFilterVals = new ArrayList<String>();
+		mFilterNots = new ArrayList<Boolean>();
 
 		try (Transaction tx = mNeoGraphDb.beginTx()) {
 			mVertices = new HashSet();
@@ -190,16 +190,46 @@ public class neoAsJungGraph implements Graph {
 		throw new IllegalStateException(
 				"Could not find a neoAsJung proxy for Neo4J Relationship");
 	}
+	
+	/**
+	 * Returns a string representing the current filters
+	 */
+	public String getFiltersText() {
+		String rv = "";
+		for (int i=0; i < mFilterKeys.size(); i++) {
+			if (!rv.equals(""))
+				rv += " and ";
+			rv += "("+mFilterKeys.get(i)+" ";
+			if (mFilterNots.get(i)) rv += " != ";
+			else rv += " == ";
+			rv += "'"+mFilterVals.get(i)+"')";
+		}
+		return rv;
+	}
 
 	/**
 	 * Sets the filter we use when returning edgeSets and nodeSets. Any elements
 	 * with a key/value matching this will not be included in the Set used by
 	 * other methods in this class.
 	 */
-	public void setFilter(String key, String val) {
-		mKeyFilter = key;
-		mValFilter = val;
-
+	public void addFilter(String key, String val, boolean not) {
+		if (val.length() > 0) {
+			mFilterKeys.add(key);
+			mFilterVals.add(val);
+			mFilterNots.add(not);
+		} else {
+			int index = mFilterKeys.indexOf(key);
+			mFilterKeys.remove(index);
+			mFilterVals.remove(index);
+			mFilterNots.remove(index);
+		}
+		applyFilters();
+	}
+	
+	/**
+	 * Applies the existing filters
+	 */
+	public void applyFilters() {
 		mVertices = new HashSet();
 		Iterator i = mUnfilteredVertices.iterator();
 		while (i.hasNext()) {
@@ -215,29 +245,35 @@ public class neoAsJungGraph implements Graph {
 			neoAsJungEdge najE = (neoAsJungEdge) i.next();
 			if (isFiltered(najE.getProp()))
 				continue;
-			if (isFiltered(najE.getFrom()) || isFiltered(najE.getTo()))
-				continue; // filtering a node filters all its edges
+			// An unfiltered edge requires that its nodes are unfiltered
+			mVertices.add(najE.getFrom());
+			mVertices.add(najE.getTo());
+			// filtering a node filters all its edges
+			//if (isFiltered(najE.getFrom()) || isFiltered(najE.getTo())) continue;
 			mEdges.add(najE);
 		}
 	}
+	
 	private boolean isFiltered(UserDataContainer udc)
 	{
-		Iterator i = udc.getUserDatumKeyIterator();
-		while (i.hasNext())
-		{
-			Object key = i.next();
-			if (!(key instanceof String))
-				continue;
-			String k = (String)key;
-			if (!mKeyFilter.equals(key))
-				continue;
-			Object val = udc.getUserDatum(key);
+		for (int index=0; index < mFilterKeys.size(); index++) {
+			String fKey = mFilterKeys.get(index);
+			boolean fNot = mFilterNots.get(index); 
+			if (!udc.containsUserDatumKey(fKey))
+				// this filter's key doesn't exist in this UDC, so the filter can't match...
+				if (fNot)
+					return true; // ...but this is a notFilter, so it matches by not matching!
+				else
+					continue; // ...and this isn't a notFilter, so keep looking for matches.
+			Object val = udc.getUserDatum(fKey);
 			if (!(val instanceof String))
-				continue;
-			String v = (String)val;
-			if (!mValFilter.equals(v))
-				continue;
-			return true;
+				// this datum's value isn't a string, so the filter can't match...
+				if (fNot)
+					return true; // ...but this is a notFilter, so it matches by not matching!
+				else
+					continue; // ...and this isn't a notFilter, so keep looking for matches.
+			if (mFilterVals.get(index).equals(val) ^ fNot)
+				return true; // if match and !notFilter, or !match and notFilter, then isFiltered
 		}
 		return false;
 	}
@@ -303,7 +339,7 @@ public class neoAsJungGraph implements Graph {
 			najV.initialize(n, this);
 			// ...and add the neoAsJung wrapper to our stash.
 			mUnfilteredVertices.add(najV);
-			setFilter(mKeyFilter, mValFilter);
+			applyFilters();
 		} else
 			// Already initialized neoAsJung object? Better be in my stash!
 			najV = getVertexFor(najV.getNode());
@@ -354,7 +390,7 @@ public class neoAsJungGraph implements Graph {
 			najE.initialize(r, this);
 			// ...and add the neoAsJung wrapper to our stash.
 			mUnfilteredEdges.add(najE);
-			setFilter(mKeyFilter, mValFilter);
+			applyFilters();
 		} else
 			// Already initialized neoAsJung object? Better be in my stash!
 			najE = getEdgeFor(najE.getRelationship());

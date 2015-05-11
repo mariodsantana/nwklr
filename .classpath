@@ -56,7 +56,6 @@
 	<classpathentry kind="lib" path="lib/neo4j-server-2.1.6.jar"/>
 	<classpathentry kind="lib" path="lib/neo4j-shell-2.1.6.jar"/>
 	<classpathentry kind="lib" path="lib/neo4j-udc-2.1.6.jar"/>
-	<classpathentry kind="lib" path="lib/nwklr.jar"/>
 	<classpathentry kind="lib" path="lib/opencsv-2.3.jar"/>
 	<classpathentry kind="lib" path="lib/org.apache.servicemix.bundles.jline-0.9.94_1.jar"/>
 	<classpathentry kind="lib" path="lib/parboiled-core-1.1.6.jar"/>

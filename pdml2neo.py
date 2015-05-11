@@ -46,10 +46,8 @@ class pdml2neoContentHandler(sax.ContentHandler):
 			self.pktProps[name] = value
 		elif type(self.pktProps[name]) == type(list()):
 			self.pktProps[name].append(value)
-			print "name:{}x{}".format(name,len(self.pktProps[name]))
 		else:
 			self.pktProps[name] = [self.pktProps[name],value]
-			print "name:{}x2".format(name)
 
 	'''
 	Process the opening tag of an XML element
