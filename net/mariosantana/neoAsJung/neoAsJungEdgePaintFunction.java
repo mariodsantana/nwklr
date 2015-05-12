@@ -5,7 +5,6 @@ import java.awt.Paint;
 
 import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.decorators.EdgePaintFunction;
-import edu.uci.ics.jung.visualization.control.PickingGraphMousePlugin;
 
 public class neoAsJungEdgePaintFunction implements EdgePaintFunction {
 

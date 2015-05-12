@@ -1,31 +1,17 @@
 package net.mariosantana.neoAsJung;
 
-import net.mariosantana.neoAsJung.*;
-
 import edu.uci.ics.jung.graph.ArchetypeVertex;
 import edu.uci.ics.jung.graph.Vertex;
 import edu.uci.ics.jung.graph.ArchetypeEdge;
 import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.ArchetypeGraph;
-import edu.uci.ics.jung.graph.Graph;
-import edu.uci.ics.jung.graph.event.GraphEventListener;
-import edu.uci.ics.jung.graph.event.GraphEventType;
-
 import edu.uci.ics.jung.utils.UserDataContainer;
-import edu.uci.ics.jung.utils.UserDataContainer.CopyAction;
 import edu.uci.ics.jung.utils.DefaultUserData;
-import edu.uci.ics.jung.utils.Pair;
-
-import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.tooling.GlobalGraphOperations;
+import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.Direction;
-
 import java.util.Set;
 import java.util.HashSet;
-import java.util.Collection;
 import java.util.Iterator;
 
 /**
@@ -64,62 +50,18 @@ public class neoAsJungVertex implements Vertex
             throw new IllegalArgumentException("Node's graph is different than the one provided");
         mGraphDb = g;
         mNeoNode = n;
-        Iterator i = mNeoNode.getPropertyKeys().iterator();
-        while (i.hasNext())
-        {
-            String k = (String)i.next();
+        Iterator<String> is = mNeoNode.getPropertyKeys().iterator();
+        while (is.hasNext()) {
+            String k = is.next();
             mProp.addUserDatum(k,mNeoNode.getProperty(k),new CopyAction.Shared());
         }
-        i = mNeoNode.getLabels().iterator();
-        for (int j=0; i.hasNext(); j++)
-            mProp.addUserDatum("Label"+j,i.next(),new CopyAction.Shared());
+        Iterator<Label> il = mNeoNode.getLabels().iterator();
+        for (int j=0; il.hasNext(); j++)
+            mProp.addUserDatum("neoLabel"+j,il.next(),new CopyAction.Shared());
+        mProp.addUserDatum("neoURL",new String("node/"+mNeoNode.getId()),new CopyAction.Shared());
     }
 
-    /**
-     * Manage "connection."  Basically, the Jung framework supports Element
-     * objects (Edges and Vertices) that don't belong to any graph yet.  These
-     * Elements are then "added" to a graph.  So this stuff is to implement
-     * that concept around the Neo4J objects, which don't have that concept.
-     * We always keep a copy of the property data and incident vertices for
-     * this edge.  Whenever we can infer what Neo4J DB we should be operating
-     * in, we "connect" to it.  When we're connected, our underlying Neo4J
-     * object is not null.  When we disconnect, we delete ourselves from the
-     * underlying object.
-     */
-    /****** -----[ Gonna disable this all for now.  Let's assume that no orphans are ever made. ]
-    public boolean isConnected()
-    {
-        return (mNeoNode != null);
-    }
-    public void connect(GraphDatabaseService g)
-    {
-        if (isConnected())
-            return;
-        mGraphDb = g;
-        if (mGraphDb == null)
-            throw new IllegalStateException("This neoAsJung object does not have enough information to connect");
-        mNeoNode = mGraphDb.getGraphDb().createNode();
-        Iterator i = mEdges.iterator();
-        while (i.hasNext())
-        {
-            ((neoAsJungEdge)i.next()).connect(g);
-        }
-    }
-    public void connect()
-    {
-        connect(mGraphDb);
-    }
-    public void disconnect()
-    {
-        Iterator i = mEdges.iterator();
-        while (i.hasNext())
-        {
-            ((neoAsJungEdge)i.next()).disconnect();
-        }
-        mNeoNode.delete();
-        mNeoNode = null;
-    }
-
+    
     /*****************************************************
      *****************************************************
      *****************************************************
@@ -138,20 +80,13 @@ public class neoAsJungVertex implements Vertex
      * 
      * @see ArchetypeVertex#getNeighbors()
      * @see #isPredecessorOf(Vertex)
-     * @return  all predecessors of this vertex
+     * @return  all unfiltered predecessors of this vertex
      */
-    public Set getPredecessors()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.INCOMING).iterator();
-            while (i.hasNext())
-            {
-                Relationship r = (Relationship)i.next();
-                s.add(mGraphDb.getVertexFor(r.getOtherNode(mNeoNode)));
-            }
-        }
+    public Set getPredecessors() {
+        Set<neoAsJungVertex> s = new HashSet<neoAsJungVertex>();
+        Iterator<neoAsJungEdge> i = getInEdges().iterator();
+        while (i.hasNext())
+        	s.add(i.next().getFrom());
         return s;
     }
 
@@ -163,20 +98,13 @@ public class neoAsJungVertex implements Vertex
      * 
      * @see ArchetypeVertex#getNeighbors()
      * @see #isSuccessorOf(Vertex)
-     * @return  all successors of this vertex
+     * @return  all unfiltered successors of this vertex
      */
-    public Set getSuccessors()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.OUTGOING).iterator();
-            while (i.hasNext())
-            {
-                Relationship r = (Relationship)i.next();
-                s.add(mGraphDb.getVertexFor(r.getOtherNode(mNeoNode)));
-            }
-        }
+    public Set getSuccessors() {
+        Set<neoAsJungVertex> s = new HashSet<neoAsJungVertex>();
+        Iterator<neoAsJungEdge> i = getOutEdges().iterator();
+        while (i.hasNext())
+        	s.add(i.next().getTo());
         return s;
     }
 
@@ -187,28 +115,15 @@ public class neoAsJungVertex implements Vertex
      * Each element of the set returned should implement <code>Edge</code>.
      * 
      * @see ArchetypeVertex#getIncidentEdges()
-     * @return  all edges whose destination is this vertex
+     * @return  all unfiltered edges whose destination is this vertex
      */
-    public Set getInEdges()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.INCOMING).iterator();
-            while (i.hasNext())
-            {
-	        	try 
-	        	{
-	        		neoAsJungEdge najE = mGraphDb.getEdgeFor((Relationship)i.next());
-	        		s.add(najE);
-	        	}
-	        	catch (IllegalStateException e)
-	        	{
-	        		// If we can't find the neoAsJung version of this relationship, it's probably been filtered.
-	        		if (!e.getMessage().equals("Could not find a neoAsJung proxy for Neo4J Relationship"))
-	        			throw e;
-	        	}
-            }
+    public Set getInEdges() {
+        Set<neoAsJungEdge> s = new HashSet<neoAsJungEdge>();
+        Iterator<neoAsJungEdge> i = this.mGraphDb.getEdges().iterator();
+        while (i.hasNext()) {
+        	neoAsJungEdge najE = i.next();
+        	if (najE.getTo() == this)
+        		s.add(najE);
         }
         return s;
     }
@@ -220,28 +135,15 @@ public class neoAsJungVertex implements Vertex
      * Each element of the set returned should implement <code>Edge</code>.
      * 
      * @see ArchetypeVertex#getIncidentEdges()
-     * @return  all edges whose source is this vertex
+     * @return  all unfiltered edges whose source is this vertex
      */
-    public Set getOutEdges()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.OUTGOING).iterator();
-            while (i.hasNext())
-            {
-            	try 
-            	{
-            		neoAsJungEdge najE = mGraphDb.getEdgeFor((Relationship)i.next());
-            		s.add(najE);
-            	}
-            	catch (IllegalStateException e)
-            	{
-            		// If we can't find the neoAsJung version of this relationship, it's probably been filtered.
-            		if (!e.getMessage().equals("Could not find a neoAsJung proxy for Neo4J Relationship"))
-            			throw e;
-            	}
-            }
+    public Set getOutEdges() {
+        Set<neoAsJungEdge> s = new HashSet<neoAsJungEdge>();
+        Iterator<neoAsJungEdge> i = this.mGraphDb.getEdges().iterator();
+        while (i.hasNext()) {
+        	neoAsJungEdge najE = i.next();
+        	if (najE.getFrom() == this)
+        		s.add(najE);
         }
         return s;
     }
@@ -304,28 +206,11 @@ public class neoAsJungVertex implements Vertex
      * <code>v.isSource(e) == true</code> and 
      * <code>this.isDest(e) == true</code>.
      * 
-     * The behavior of this method is undefined if <code>v</code> is not
-     * an element of this vertex's graph.
-     * 
-     * @note Says YES even if the Edge that shows this is filtered.
      * @see ArchetypeVertex#isNeighborOf(ArchetypeVertex)
      * @see #getSuccessors()
      */
-    public boolean isSuccessorOf(Vertex v)
-    {
-        if (!(v instanceof neoAsJungVertex))
-            throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        long nId = ((neoAsJungVertex)v).getNode().getId();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.OUTGOING).iterator();
-            while (i.hasNext())
-            {
-                if ( ((Node)i.next()).getId() == nId )
-                    return true;
-            }
-        }
-        return false;
+    public boolean isSuccessorOf(Vertex v) {
+    	return this.getSuccessors().contains(v);
     }
 
     /**
@@ -336,28 +221,11 @@ public class neoAsJungVertex implements Vertex
      * <code>this.isSource(e) == true</code> and 
      * <code>v.isDest(e) == true</code>.
      * 
-     * The behavior of this method is undefined if <code>v</code> is not
-     * an element of this vertex's graph.
-     * 
-     * @note Says YES even if the Edge that shows this is filtered.
      * @see ArchetypeVertex#isNeighborOf(ArchetypeVertex)
      * @see #getPredecessors()
      */
-    public boolean isPredecessorOf(Vertex v)
-    {
-        if (!(v instanceof neoAsJungVertex))
-            throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        long nId = ((neoAsJungVertex)v).getNode().getId();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.INCOMING).iterator();
-            while (i.hasNext())
-            {
-                if ( ((Node)i.next()).getId() == nId )
-                    return true;
-            }
-        }
-        return false;
+    public boolean isPredecessorOf(Vertex v) {
+    	return this.getPredecessors().contains(v);
     }
 
     /**
@@ -366,22 +234,13 @@ public class neoAsJungVertex implements Vertex
      * A vertex <code>v</code> is a source of <code>e</code> if <code>e</code>
      * is an outgoing edge of <code>v</code>.
      * 
-     * The behavior of this method is undefined if <code>e</code> is not
-     * an element of this vertex's graph.
-     * 
-     * @note Says YES even if the Edge that shows this is filtered.
      * @see DirectedEdge#getSource()
      * @see ArchetypeVertex#isIncident(ArchetypeEdge)
      */
-    public boolean isSource(Edge e)
-    {
+    public boolean isSource(Edge e) {
         if (!(e instanceof neoAsJungEdge))
             throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        Relationship r = ((neoAsJungEdge)e).getRelationship();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            return (r.getStartNode().getId() == mNeoNode.getId());
-        }
+        return ((neoAsJungEdge)e).getFrom() == this;
     }
 
     /**
@@ -390,22 +249,13 @@ public class neoAsJungVertex implements Vertex
      * A vertex <code>v</code> is a destination of <code>e</code> 
      * if <code>e</code> is an incoming edge of <code>v</code>.
      * 
-     * The behavior of this method is undefined if <code>e</code> is not
-     * an element of this vertex's graph.
-     * 
-     * @note Says YES even if the Edge that shows this is filtered.
      * @see DirectedEdge#getDest()
      * @see ArchetypeVertex#isIncident(ArchetypeEdge)
      */
-    public boolean isDest(Edge e)
-    {
+    public boolean isDest(Edge e) {
         if (!(e instanceof neoAsJungEdge))
             throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        Relationship r = ((neoAsJungEdge)e).getRelationship();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            return (r.getEndNode().getId() == mNeoNode.getId());
-        }
+        return ((neoAsJungEdge)e).getTo() == this;
     }
 
     /**
@@ -422,23 +272,16 @@ public class neoAsJungVertex implements Vertex
      * If <code>v</code> is not connected to this vertex, returns 
      * <code>null</code>.
      * 
-     * @note Find edges that are otherwise filtered.
      * @see Vertex#findEdgeSet(Vertex)
      */
-    public Edge findEdge(Vertex v)
-    {
+    public Edge findEdge(Vertex v) {
         if (!(v instanceof neoAsJungVertex))
             throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        long nId = ((neoAsJungVertex)v).getNode().getId();
-        Iterator i = getOutEdges().iterator();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            while (i.hasNext())
-            {
-                neoAsJungEdge najE = (neoAsJungEdge)i.next();
-                if (najE.getRelationship().getEndNode().getId() == nId)
-                    return najE;
-            }
+        Iterator<neoAsJungEdge> i = this.getOutEdges().iterator();
+        while (i.hasNext()) {
+        	neoAsJungEdge najE = i.next();
+        	if (najE.getTo() == this)
+        		return najE;
         }
         return null;
     }
@@ -453,24 +296,17 @@ public class neoAsJungVertex implements Vertex
      * If <code>v</code>
      * is not connected to this vertex, returns an empty <code>Set</code>.
      * 
-     * @note Finds edges that are otherwise filtered
      * @see Vertex#findEdge(Vertex)
      */
-    public Set findEdgeSet(Vertex v)
-    {
+    public Set findEdgeSet(Vertex v) {
         if (!(v instanceof neoAsJungVertex))
             throw new IllegalArgumentException("Argument must be a neoAsJung type");
-        Set s = new HashSet();
-        long nId = ((neoAsJungVertex)v).getNode().getId();
-        Iterator i = getOutEdges().iterator();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            while (i.hasNext())
-            {
-                neoAsJungEdge najE = (neoAsJungEdge)i.next();
-                if (najE.getRelationship().getEndNode().getId() == nId)
-                    s.add(najE);
-            }
+        Set<neoAsJungEdge> s = new HashSet<neoAsJungEdge>();
+        Iterator<neoAsJungEdge> i = this.getOutEdges().iterator();
+        while (i.hasNext()) {
+        	neoAsJungEdge najE = i.next();
+        	if (najE.getTo() == this)
+        		s.add(najE);
         }
         return s;
     }
@@ -492,28 +328,14 @@ public class neoAsJungVertex implements Vertex
      * If this vertex is connected to itself with a self-loop, then 
      * this vertex will be included in its own neighbor set.
      */
-    public Set getNeighbors()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.BOTH).iterator();
-            while (i.hasNext())
-            {
-                Relationship r = (Relationship)i.next();
-            	try 
-            	{
-            		neoAsJungVertex najV = mGraphDb.getVertexFor(r.getOtherNode(mNeoNode));
-            		s.add(najV);
-            	}
-            	catch (IllegalStateException e)
-            	{
-            		// If we can't find the neoAsJung version of this relationship, it's probably been filtered.
-            		if (!e.getMessage().equals("Could not find a neoAsJung proxy for Neo4J Relationship"))
-            			throw e;
-            	}
-            }
-        }
+    public Set getNeighbors() {
+        Set<neoAsJungVertex> s = new HashSet<neoAsJungVertex>();
+        Iterator<neoAsJungEdge> i = this.getInEdges().iterator();
+        while (i.hasNext())
+        	s.add(i.next().getFrom());
+        i = this.getOutEdges().iterator();
+        while (i.hasNext())
+        	s.add(i.next().getTo());
         return s;
     }
     
@@ -521,27 +343,10 @@ public class neoAsJungVertex implements Vertex
      * Returns the set of edges which are incident to this vertex.
      * Each of these edges should implement <code>ArchetypeEdge</code>.  
      */
-    public Set getIncidentEdges()
-    {
-        Set s = new HashSet();
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = mNeoNode.getRelationships(Direction.OUTGOING).iterator();
-            while (i.hasNext())
-            {
-            	try 
-            	{
-            		neoAsJungEdge najE = mGraphDb.getEdgeFor((Relationship)i.next());
-            		s.add(najE);
-            	}
-            	catch (IllegalStateException e)
-            	{
-            		// If we can't find the neoAsJung version of this relationship, it's probably been filtered.
-            		if (!e.getMessage().equals("Could not find a neoAsJung proxy for Neo4J Relationship"))
-            			throw e;
-            	}
-            }
-        }
+    public Set getIncidentEdges() {
+        Set<neoAsJungEdge> s = new HashSet<neoAsJungEdge>();
+        s.addAll(this.getInEdges());
+        s.addAll(this.getOutEdges());
         return s;
     }
 
@@ -740,10 +545,11 @@ public class neoAsJungVertex implements Vertex
      * @param datum    the datum being added
      * @param copyAct  the CopyAction of the datum being added
      */
-    public void addUserDatum(Object key, Object datum, CopyAction copyAct)
-    {
+    public void addUserDatum(Object key, Object datum, CopyAction copyAct) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoNode.setProperty((String)key,datum); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoNode.setProperty((String)key,datum);
+            }
         mProp.addUserDatum(key, datum, copyAct);
     }
 
@@ -753,13 +559,10 @@ public class neoAsJungVertex implements Vertex
      * 
      * @param udc  the source of the user data to be copied into this container
      */
-    public void importUserData(UserDataContainer udc)
-    {
-        try (Transaction tx = mGraphDb.getGraphDb().beginTx())
-        {
-            Iterator i = udc.getUserDatumKeyIterator();
-            while(i.hasNext())
-            {
+    public void importUserData(UserDataContainer udc) {
+        try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            Iterator<Object> i = udc.getUserDatumKeyIterator();
+            while(i.hasNext()) {
                 Object k = i.next();
                 if ((k instanceof String))
                     mNeoNode.setProperty((String)k,udc.getUserDatum(k));
@@ -810,10 +613,11 @@ public class neoAsJungVertex implements Vertex
      * @param datum    the replacement/new datum
      * @param copyAct  the CopyAction for the new (key, datum) pair
      */
-    public void setUserDatum(Object key, Object datum, CopyAction copyAct)
-    {
+    public void setUserDatum(Object key, Object datum, CopyAction copyAct) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoNode.setProperty((String)key,datum); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoNode.setProperty((String)key,datum);
+            }
         mProp.setUserDatum(key,datum,copyAct);
     }
 
@@ -824,10 +628,11 @@ public class neoAsJungVertex implements Vertex
      * @param key      the key of the datum to be removed
      * @return Object  the datum removed
      */
-    public Object removeUserDatum(Object key)
-    {
+    public Object removeUserDatum(Object key) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoNode.removeProperty((String)key); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoNode.removeProperty((String)key);
+            }
         return mProp.removeUserDatum(key);
     }
 

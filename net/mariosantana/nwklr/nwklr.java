@@ -35,23 +35,24 @@ import javax.swing.JFrame;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
-import javax.swing.JTextField;
+import javax.swing.JTextArea;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
+
 import net.mariosantana.neoAsJung.neoAsJungGraph;
 import net.mariosantana.neoAsJung.neoAsJungEdgePaintFunction;
 import net.mariosantana.neoAsJung.neoAsJungVertexPaintFunction;
 import edu.uci.ics.jung.graph.Graph;
 import edu.uci.ics.jung.utils.UserDataContainer;
-import edu.uci.ics.jung.visualization.FRLayout;
-import edu.uci.ics.jung.visualization.ISOMLayout;
-import edu.uci.ics.jung.visualization.Layout;
 import edu.uci.ics.jung.visualization.PluggableRenderer;
 import edu.uci.ics.jung.visualization.ShapePickSupport;
-import edu.uci.ics.jung.visualization.SpringLayout;
 import edu.uci.ics.jung.visualization.VisualizationViewer;
+import edu.uci.ics.jung.visualization.Layout;
+import edu.uci.ics.jung.visualization.SpringLayout;
+import edu.uci.ics.jung.visualization.FRLayout;
+import edu.uci.ics.jung.visualization.ISOMLayout;
 import edu.uci.ics.jung.visualization.contrib.CircleLayout;
 import edu.uci.ics.jung.visualization.contrib.KKLayout;
 import edu.uci.ics.jung.visualization.control.AnimatedPickingGraphMousePlugin;
@@ -79,15 +80,13 @@ public class nwklr extends JApplet {
 	protected static PluggableRenderer renderer;
 	protected static JPanel gPanel;
 	protected static JPanel cPane;
-	protected static JTextField filtersField;
+	protected static JTextArea queryField;
 	protected static JFrame mainFrame;
 	protected static JSplitPane mainPane;
 	protected static JTree propTree;
 	protected static JScrollPane propPane;
 	protected static DefaultMutableTreeNode propRoot;
 	protected static UserDataContainer udc;
-	protected static JTextField keyInput;
-	protected static JTextField valInput;
 	protected static nwklrWrappingPickingGraphMousePlugin mPickingMouseWrapper;
 	protected static nwklrWrappingTranslatingGraphMousePlugin mTranslatingMouseWrapper;
 
@@ -131,7 +130,7 @@ public class nwklr extends JApplet {
 						name += " in NO STREAM";
 				propRoot = new DefaultMutableTreeNode(name);
 			}
-			Iterator i = udc.getUserDatumKeyIterator();
+			Iterator<Object> i = udc.getUserDatumKeyIterator();
 			while (i.hasNext()) {
 				Object key = i.next();
 				if (!(key instanceof String))
@@ -148,12 +147,14 @@ public class nwklr extends JApplet {
 				// Split the key on '.', use components as tree path, and
 				// walk the tree along that path, creating tree nodes as
 				// necessary.
+				// TODO: make it do something when a treenode is clicked
 				String[] path = k.split("\\.");
 				DefaultMutableTreeNode ptr = propRoot;
 				PATH_ELEMENT: for (int pCount = 0; pCount < path.length; pCount++) {
 					// Look through all existing children for this path element.
 					for (int j = 0; j < ptr.getChildCount(); j++) {
-						if (ptr.getChildAt(j).toString().equals(path[pCount])) {
+						if (ptr.getChildAt(j).toString().equals(path[pCount])
+								|| ptr.getChildAt(j).toString().startsWith(path[pCount]+": ")) {
 							// Path element exists as an existing child! Advance
 							// pointer and proceed to next path element
 							ptr = (DefaultMutableTreeNode) ptr.getChildAt(j);
@@ -265,9 +266,9 @@ public class nwklr extends JApplet {
 	 * Manage switching between layouts.
 	 */
 	private static final class LayoutChooser implements ActionListener {
-		protected static JComboBox jcbLayoutChooser;
+		protected static JComboBox<Class<?>> jcbLayoutChooser;
 
-		private LayoutChooser(JComboBox jcb) {
+		private LayoutChooser(JComboBox<Class<?>> jcb) {
 			super();
 			jcbLayoutChooser = jcb;
 		}
@@ -276,7 +277,7 @@ public class nwklr extends JApplet {
 			Class<?> layoutClass = (Class<?>) jcbLayoutChooser.getSelectedItem();
 			Object[] constructorArgs = { aGraph };
 			try {
-				Constructor constructor = layoutClass
+				Constructor<?> constructor = layoutClass
 						.getConstructor(new Class[] { Graph.class });
 				Layout l = (Layout) constructor.newInstance(constructorArgs);
 				vv.stop();
@@ -321,8 +322,7 @@ public class nwklr extends JApplet {
 		modeBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, modeBox
 				.getPreferredSize().height));
 
-		Class[] layouts = getArrayOfLayouts();
-		final JComboBox jcbLayout = new JComboBox(layouts);
+		final JComboBox<Class<?>> jcbLayout = new JComboBox<Class<?>>(getArrayOfLayouts());
 		// use a renderer to shorten the layout name presentation
 		jcbLayout.setRenderer(new DefaultListCellRenderer() {
 			@Override
@@ -352,75 +352,45 @@ public class nwklr extends JApplet {
 		propPane = new JScrollPane(propTree);
 		propPane.setBackground(Color.WHITE);
 
-		keyInput = new JTextField();
-		keyInput.setToolTipText("Key to match value on (both vertices and nodes)");
-		keyInput.setMaximumSize(new Dimension(Integer.MAX_VALUE, keyInput
-				.getPreferredSize().height));
-		valInput = new JTextField();
-		valInput.setToolTipText("Value to filter on (both vertices and nodes)");
-		valInput.setMaximumSize(new Dimension(Integer.MAX_VALUE, valInput
-				.getPreferredSize().height));
-		JPanel filterFields = new JPanel();
-		filterFields.setLayout(new BoxLayout(filterFields, BoxLayout.Y_AXIS));
-		filterFields.add(keyInput);
-		filterFields.add(valInput);
-
+		queryField = new JTextArea(g.getCypherFilter());
+		JScrollPane queryPane = new JScrollPane(queryField);
 		JButton filterButton = new JButton();
 		filterButton
-				.setToolTipText("Filter away graph elements that match the key/value entered (A blank value will remove the filter on that key)");
-		filterButton.setText("Filter");
+				.setToolTipText("Apply the CYPHER query as a filter (A blank value will reset to the default filter)");
+		filterButton.setText("Apply");
 		filterButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				System.out.println("---[ adding filter "+keyInput.getText()+"=='"+valInput.getText()+"'");
-				g.addFilter(keyInput.getText(), valInput.getText(), false);
-				filtersField.setText(g.getFiltersText());
-				mLayoutChooser.doAction(g);
-				System.out.println("done");
+				String oldCypherFilter = g.getCypherFilter();
+				g.setCypherFilter(queryField.getText());
+				try {
+					g.applyFilters();
+					mLayoutChooser.doAction(g);
+				} catch (Exception exception) {
+					g.setCypherFilter(oldCypherFilter);
+					String msg = "// There's an error in this CYPHER query\n\n";
+					msg += "// " + exception.toString().replace("\n", "\n// ");
+					msg += "\n\n" + queryField.getText();					
+					msg += "\n\n// The old query is:\n";
+					msg += "// " + oldCypherFilter.replace("\n", "\n// ");
+					queryField.setText(msg);
+				}
 			}
 		});
-		JButton notFilterButton = new JButton();
-		notFilterButton
-				.setToolTipText("Filter away graph elements that DON'T match the key/value entered (A blank value will remove the filter on that key)");
-		notFilterButton.setText("!Filter");
-		notFilterButton.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				System.out.println("---[ adding filter "+keyInput.getText()+"!='"+valInput.getText()+"'");
-				g.addFilter(keyInput.getText(), valInput.getText(), true);
-				filtersField.setText(g.getFiltersText());
-				mLayoutChooser.doAction(g);
-				System.out.println("done");
-			}
-		});
-		JPanel filterButtons = new JPanel();
-		filterButtons.setLayout(new BoxLayout(filterButtons, BoxLayout.Y_AXIS));
-		filterButtons.add(filterButton);
-		filterButtons.add(notFilterButton);
-
 
 		JPanel filterPanel = new JPanel();
-		filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.X_AXIS));
-		filterPanel.add(filterFields);
-		filterPanel.add(filterButtons);
-		filterPanel.setBackground(Color.WHITE);
-		
-		filtersField = new JTextField();
+		filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.Y_AXIS));
+		filterPanel.add(queryPane);
+		filterPanel.add(filterButton);
 
 		JPanel jp = new JPanel();
 		jp.setLayout(new BoxLayout(jp, BoxLayout.Y_AXIS));
 		jp.add(modeBox);
 		jp.add(jcbLayout);
 		jp.add(filterPanel);
-		jp.add(filtersField);
 		jp.add(propPane);
 		return jp;
 	} // getControlPanel()
-
-	//@Override
-	//public void start() {
-	//	this.getContentPane().add(getGraphPanel());
-	//}
 
 	private static Class<?>[] getArrayOfLayouts() {
 		List<Class<?>> layouts = new ArrayList<Class<?>>();
@@ -430,7 +400,7 @@ public class nwklr extends JApplet {
 		// layouts.add(DAGLayout.class);
 		layouts.add(SpringLayout.class);
 		layouts.add(ISOMLayout.class);
-		return (Class[]) layouts.toArray(new Class[0]);
+		return (Class<?>[]) layouts.toArray(new Class<?>[0]);
 	}
 
 	public static void main(String[] args) {

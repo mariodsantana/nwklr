@@ -1,10 +1,6 @@
 package net.mariosantana.neoAsJung;
 
-import net.mariosantana.neoAsJung.*;
-
-import edu.uci.ics.jung.graph.ArchetypeVertex;
 import edu.uci.ics.jung.graph.Vertex;
-import edu.uci.ics.jung.graph.ArchetypeEdge;
 import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.ArchetypeGraph;
 import edu.uci.ics.jung.graph.Graph;
@@ -12,27 +8,24 @@ import edu.uci.ics.jung.graph.event.GraphEventListener;
 import edu.uci.ics.jung.graph.event.GraphEventType;
 
 import edu.uci.ics.jung.utils.UserDataContainer;
-import edu.uci.ics.jung.utils.UserDataContainer.CopyAction;
 import edu.uci.ics.jung.utils.DefaultUserData;
-import edu.uci.ics.jung.utils.Pair;
-
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.tooling.GlobalGraphOperations;
+import org.neo4j.cypher.javacompat.ExecutionEngine;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Collection;
 import java.util.Vector;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.lang.System;
-import java.lang.UnsupportedOperationException;
 
 /**
  * Wraps a Neo4J graph with Jungian trappings. Importantly: - allows for
@@ -66,26 +59,34 @@ public class neoAsJungGraph implements Graph {
 	public String getDbProperties() {
 		return mDbProperties;
 	}
+	
+	protected ExecutionEngine mExecutionEngine;
+	public ExecutionEngine getExecutionEngine() {
+		return mExecutionEngine;
+	}
 
 	/**
-	 * These sets are copies that might be filtered
+	 * These sets are copies from the DB, filtered by the cypherFilter CYPHER expression
 	 */
-	protected Set mVertices;
-	protected Set mEdges;
+	protected Set<neoAsJungVertex> mVertices;
+	protected Set<neoAsJungEdge> mEdges;
 
 	/**
-	 * These sets should contain everything from the underlying Neo4J db.
+	 * The CYPHER query that was used to filter the nodes we have right now.
 	 */
-	protected Set mUnfilteredVertices;
-	protected Set mUnfilteredEdges;
-
-	/**
-	 * These strings define the filters to weed out.
-	 */
-	protected ArrayList<String> mFilterKeys;
-	protected ArrayList<String> mFilterVals;
-	protected ArrayList<Boolean> mFilterNots;
-
+	protected String defaultCypherFilter = "// See http://neo4j.com/docs/stable/cypher-query-lang.html\n"
+			+ "// Sample: find first 10 streams-or-aka edges, and associated nodes\n"
+			+ "MATCH (s)-[r:strTo|aka]->(d) return r limit 10";
+	protected String cypherFilter = defaultCypherFilter;
+	public String getCypherFilter() {
+		return this.cypherFilter;
+	}
+	public void setCypherFilter(String f) {
+		this.cypherFilter = f.trim();
+		if (cypherFilter.length() == 0)
+			this.cypherFilter = this.defaultCypherFilter;
+	}
+	
 	/**
 	 * Since Neo4J graphs don't have properties, we use some Jung framework
 	 * stuff to enable properties in this class. But they won't be persisted to
@@ -128,154 +129,120 @@ public class neoAsJungGraph implements Graph {
 	 */
 	private void initialize() {
 		mNeoGraphOp = GlobalGraphOperations.at(mNeoGraphDb);
+		mExecutionEngine = new ExecutionEngine(mNeoGraphDb);
 		props = new DefaultUserData();
-		mFilterKeys = new ArrayList<String>();
-		mFilterVals = new ArrayList<String>();
-		mFilterNots = new ArrayList<Boolean>();
-
-		try (Transaction tx = mNeoGraphDb.beginTx()) {
-			mVertices = new HashSet();
-			Iterator i = mNeoGraphOp.getAllNodes().iterator();
-			while (i.hasNext()) {
-				neoAsJungVertex najV = new neoAsJungVertex();
-				najV.initialize((Node) i.next(), this);
-				mVertices.add(najV);
-			}
-			mUnfilteredVertices = new HashSet(mVertices);
-
-			mEdges = new HashSet();
-			i = mNeoGraphOp.getAllRelationships().iterator();
-			while (i.hasNext()) {
-				Relationship r = (Relationship) i.next();
-				neoAsJungVertex najVfrom = getVertexFor(r.getStartNode());
-				neoAsJungVertex najVto = getVertexFor(r.getEndNode());
-				neoAsJungEdge najE = new neoAsJungEdge(najVfrom, najVto);
-				najE.initialize(r, this);
-				mEdges.add(najE);
-			}
-			mUnfilteredEdges = new HashSet(mEdges);
-
-			tx.success();
-		}
+		applyFilters();
 	}
 
 	/**
-	 * Methods to grab from my stash of neoAsJung objects, to keep from having
-	 * to create them prolifically
+	 * Get a neoAsJung version of a neo4j object.
+	 * Fetch from current (possibly filtered!) list of neoAsJung objects,
+	 * otherwise wrap in a new neoAsJung object.
 	 */
 	public neoAsJungVertex getVertexFor(Node n) {
 		if (n == null)
 			return null;
 		long nId = n.getId();
-		Iterator i = mVertices.iterator();
+		Iterator<neoAsJungVertex> i = mVertices.iterator();
 		while (i.hasNext()) {
 			neoAsJungVertex najV = (neoAsJungVertex) i.next();
 			if (((Node) najV.getNode()).getId() == nId)
 				return najV;
 		}
-		throw new IllegalStateException(
-				"Could not find a neoAsJung proxy for Neo4J Node");
+		neoAsJungVertex najV = new neoAsJungVertex();
+		try (Transaction tx = mNeoGraphDb.beginTx()) {
+			najV.initialize(n, this);
+		}
+		mVertices.add(najV);
+		return najV;
 	}
 
+	/**
+	 * Get a neoAsJung version of a neo4j object.
+	 * Fetch from current (possibly filtered!) list of neoAsJung objects,
+	 * otherwise wrap in a new neoAsJung object.
+	 */
 	public neoAsJungEdge getEdgeFor(Relationship r) {
 		if (r == null)
 			return null;
 		long rId = r.getId();
-		Iterator i = mEdges.iterator();
+		Iterator<neoAsJungEdge> i = mEdges.iterator();
 		while (i.hasNext()) {
-			neoAsJungEdge najE = (neoAsJungEdge) i.next();
-			if (((Relationship) najE.getRelationship()).getId() == rId)
+			neoAsJungEdge najE = i.next();
+			if (najE.getRelationship().getId() == rId)
 				return najE;
 		}
-		throw new IllegalStateException(
-				"Could not find a neoAsJung proxy for Neo4J Relationship");
-	}
-	
-	/**
-	 * Returns a string representing the current filters
-	 */
-	public String getFiltersText() {
-		String rv = "";
-		for (int i=0; i < mFilterKeys.size(); i++) {
-			if (!rv.equals(""))
-				rv += " and ";
-			rv += "("+mFilterKeys.get(i)+" ";
-			if (mFilterNots.get(i)) rv += " != ";
-			else rv += " == ";
-			rv += "'"+mFilterVals.get(i)+"')";
+		// Didn't find it in our current list, create a new wrapper
+		neoAsJungVertex najVfrom = getVertexFor(r.getStartNode());
+		neoAsJungVertex najVto = getVertexFor(r.getEndNode());
+		neoAsJungEdge najE = new neoAsJungEdge(najVfrom, najVto);
+		try (Transaction tx = mNeoGraphDb.beginTx()) {
+			najE.initialize(r, this);
+			tx.success();
 		}
-		return rv;
+		mEdges.add(najE);
+		return najE;
 	}
 
 	/**
-	 * Sets the filter we use when returning edgeSets and nodeSets. Any elements
-	 * with a key/value matching this will not be included in the Set used by
-	 * other methods in this class.
+	 * Resets the filter to the default
 	 */
-	public void addFilter(String key, String val, boolean not) {
-		if (val.length() > 0) {
-			mFilterKeys.add(key);
-			mFilterVals.add(val);
-			mFilterNots.add(not);
-		} else {
-			int index = mFilterKeys.indexOf(key);
-			mFilterKeys.remove(index);
-			mFilterVals.remove(index);
-			mFilterNots.remove(index);
-		}
+	public void resetFilters() {
+		this.cypherFilter = this.defaultCypherFilter;
 		applyFilters();
 	}
 	
 	/**
-	 * Applies the existing filters
+	 * Applies the existing filter.
+	 * 
+	 * @throws Exception
+	 * 		Be sure to catch this in case the cypher query doesn't work.
 	 */
 	public void applyFilters() {
-		mVertices = new HashSet();
-		Iterator i = mUnfilteredVertices.iterator();
-		while (i.hasNext()) {
-			neoAsJungVertex najV = (neoAsJungVertex) i.next();
-			if (isFiltered(najV.getProp()))
-				continue;
-			mVertices.add(najV);
+		mVertices = new HashSet<neoAsJungVertex>();
+		mEdges = new HashSet<neoAsJungEdge>();
+		try (Transaction tx = mNeoGraphDb.beginTx()) {
+			Object neoObj; // neo4j objects (nodes or relationships) returned from query
+			Iterator<Map<String,Object>> rMapIterator = this.mExecutionEngine.execute(this.cypherFilter).iterator();
+			int rMapCount = 0;
+			while (rMapIterator.hasNext()) {
+				rMapCount++;
+				Iterator<Object> neoObjects = rMapIterator.next().values().iterator();
+				int rObjCount = 0;
+				while (neoObjects.hasNext()) {
+					rObjCount++;
+					neoObj = neoObjects.next();
+					if (neoObj instanceof Node) {
+						neoAsJungVertex najV = new neoAsJungVertex();
+						najV.initialize((Node) neoObj, this);
+						mVertices.add(najV);
+					} else if (neoObj instanceof Relationship) {
+						Relationship rel = (Relationship) neoObj;
+						neoAsJungVertex najVfrom = getVertexFor(rel.getStartNode());
+						if (najVfrom == null) {
+							najVfrom = new neoAsJungVertex();
+							najVfrom.initialize(rel.getStartNode(), this);
+							mVertices.add(najVfrom);
+						}
+						neoAsJungVertex najVto = getVertexFor(rel.getEndNode());
+						if (najVto == null) {
+							najVto = new neoAsJungVertex();
+							najVto.initialize(rel.getEndNode(), this);
+							mVertices.add(najVto);
+						}
+						neoAsJungEdge najE = new neoAsJungEdge(najVfrom, najVto);
+						najE.initialize(rel, this);
+						mEdges.add(najE);
+					} else {
+						// FIXME: handle arrays of Node/Relationship objects as well
+						System.err.println("Got a non-Node/non-Relationship result from cypherFilter.");
+						System.err.println("Cypher query was -----'"+this.cypherFilter+"'-----");
+						System.err.println("Object gotten was: "+neoObj);
+						System.exit(1);
+					}
+				}
+			}
 		}
-
-		mEdges = new HashSet();
-		i = mUnfilteredEdges.iterator();
-		while (i.hasNext()) {
-			neoAsJungEdge najE = (neoAsJungEdge) i.next();
-			if (isFiltered(najE.getProp()))
-				continue;
-			// An unfiltered edge requires that its nodes are unfiltered
-			mVertices.add(najE.getFrom());
-			mVertices.add(najE.getTo());
-			// filtering a node filters all its edges
-			//if (isFiltered(najE.getFrom()) || isFiltered(najE.getTo())) continue;
-			mEdges.add(najE);
-		}
-	}
-	
-	private boolean isFiltered(UserDataContainer udc)
-	{
-		for (int index=0; index < mFilterKeys.size(); index++) {
-			String fKey = mFilterKeys.get(index);
-			boolean fNot = mFilterNots.get(index); 
-			if (!udc.containsUserDatumKey(fKey))
-				// this filter's key doesn't exist in this UDC, so the filter can't match...
-				if (fNot)
-					return true; // ...but this is a notFilter, so it matches by not matching!
-				else
-					continue; // ...and this isn't a notFilter, so keep looking for matches.
-			Object val = udc.getUserDatum(fKey);
-			if (!(val instanceof String))
-				// this datum's value isn't a string, so the filter can't match...
-				if (fNot)
-					return true; // ...but this is a notFilter, so it matches by not matching!
-				else
-					continue; // ...and this isn't a notFilter, so keep looking for matches.
-			if (mFilterVals.get(index).equals(val) ^ fNot)
-				return true; // if match and !notFilter, or !match and notFilter, then isFiltered
-		}
-		return false;
 	}
 
 	/**
@@ -318,9 +285,6 @@ public class neoAsJungGraph implements Graph {
 	 * Adds <code>v</code> to this graph, and returns a reference to the added
 	 * vertex.
 	 * 
-	 * @note This will add the element to the unfiltered set; therefore, this
-	 *       element may not be returned from other methods in this class if it
-	 *       matches an active filter.
 	 * @param v
 	 *            the vertex to be added
 	 */
@@ -334,15 +298,15 @@ public class neoAsJungGraph implements Graph {
 			Node n;
 			try (Transaction tx = mNeoGraphDb.beginTx()) {
 				n = mNeoGraphDb.createNode();
+				najV.initialize(n, this);
 				tx.success();
 			}
-			najV.initialize(n, this);
-			// ...and add the neoAsJung wrapper to our stash.
-			mUnfilteredVertices.add(najV);
-			applyFilters();
-		} else
-			// Already initialized neoAsJung object? Better be in my stash!
+		} else {
+			// Already initialized neoAsJung object? Sanity-check by refreshing...
 			najV = getVertexFor(najV.getNode());
+		}
+		// ...and make sure the neoAsJung wrapper is in our current stash.
+		mVertices.add(najV);
 		return najV;
 	}
 
@@ -357,11 +321,8 @@ public class neoAsJungGraph implements Graph {
 
 	/**
 	 * Adds <code>e</code> to this graph, and returns a reference to the added
-	 * vertex.
+	 * edge.
 	 * 
-	 * @note This will add the element to the unfiltered set; therefore, this
-	 *       element may not be returned from other methods in this class if it
-	 *       matches an active filter.
 	 * @param e
 	 *            the edge to be added
 	 */
@@ -378,8 +339,8 @@ public class neoAsJungGraph implements Graph {
 					|| najVfrom.getNode() == null || najVto.getNode() == null)
 				throw new IllegalStateException(
 						"Must initialize vertices before using them to define an edge");
-			getVertexFor(najVfrom.getNode()); // sanity-check that these
-			getVertexFor(najVto.getNode()); // vertices are in my stash
+			najVfrom = getVertexFor(najVfrom.getNode()); // sanity-check these...
+			najVto = getVertexFor(najVto.getNode()); // ...vertices by refreshing...
 			// ...then create the underlying Relationship...
 			Relationship r;
 			try (Transaction tx = mNeoGraphDb.beginTx()) {
@@ -388,12 +349,12 @@ public class neoAsJungGraph implements Graph {
 				tx.success();
 			}
 			najE.initialize(r, this);
-			// ...and add the neoAsJung wrapper to our stash.
-			mUnfilteredEdges.add(najE);
-			applyFilters();
-		} else
-			// Already initialized neoAsJung object? Better be in my stash!
+		} else {
+			// Already initialized neoAsJung object? Sanity-check by refreshing...
 			najE = getEdgeFor(najE.getRelationship());
+		}
+		// ...and make sure the neoAsJung wrapper is in our current stash.
+		mEdges.add(najE);
 		return najE;
 	}
 
@@ -410,14 +371,13 @@ public class neoAsJungGraph implements Graph {
 			throw new IllegalArgumentException(
 					"Argument must be a neoAsJung type");
 		neoAsJungVertex najV = (neoAsJungVertex) v;
-		if (najV.getGraphDb() != mNeoGraphDb || !mVertices.contains(najV))
+		if (najV.getGraphDb() != mNeoGraphDb)
 			throw new IllegalArgumentException(
-					"Argument does not exist in this graph");
-		Iterator i = najV.getNode().getRelationships().iterator();
+					"Argument not initialized in this graph");
+		Iterator<Relationship> i = najV.getNode().getRelationships().iterator();
 		while (i.hasNext())
-			removeEdge(getEdgeFor((Relationship) i.next()));
+			removeEdge(getEdgeFor(i.next()));
 		mVertices.remove(najV);
-		mUnfilteredVertices.remove(najV);
 		najV.getNode().delete();
 	}
 
@@ -431,10 +391,9 @@ public class neoAsJungGraph implements Graph {
 			throw new IllegalArgumentException(
 					"Argument must be a neoAsJung type");
 		neoAsJungEdge najE = (neoAsJungEdge) e;
-		if (najE.getGraphDb() != mNeoGraphDb || !mEdges.contains(najE))
+		if (najE.getGraphDb() != mNeoGraphDb)
 			throw new IllegalArgumentException(
-					"Argument does not exist in this graph");
-		mUnfilteredEdges.remove(najE);
+					"Argument not initialized in this graph");
 		mEdges.remove(najE);
 		najE.getRelationship().delete();
 	}
@@ -508,9 +467,9 @@ public class neoAsJungGraph implements Graph {
 	 *             <code>GraphUtils.removeVertices(graph, vertices)</code>.
 	 */
 	public void removeVertices(Set vertices) {
-		Iterator i = vertices.iterator();
+		Iterator<Vertex> i = vertices.iterator();
 		while (i.hasNext())
-			removeVertex((Vertex) i.next());
+			removeVertex(i.next());
 	}
 
 	/**
@@ -524,9 +483,9 @@ public class neoAsJungGraph implements Graph {
 	 *             <code>GraphUtils.removeEdges(graph, edges)</code>.
 	 */
 	public void removeEdges(Set edges) {
-		Iterator i = edges.iterator();
+		Iterator<Edge> i = edges.iterator();
 		while (i.hasNext())
-			removeEdge((Edge) i.next());
+			removeEdge(i.next());
 	}
 
 	/**
@@ -714,6 +673,6 @@ public class neoAsJungGraph implements Graph {
 	 * @return true if <code>key</code> is present in this user data container
 	 */
 	public boolean containsUserDatumKey(Object key) {
-		return containsUserDatumKey(key);
+		return props.containsUserDatumKey(key);
 	}
 }

@@ -1,22 +1,15 @@
 package net.mariosantana.neoAsJung;
 
-import net.mariosantana.neoAsJung.*;
 import edu.uci.ics.jung.graph.ArchetypeVertex;
 import edu.uci.ics.jung.graph.Vertex;
 import edu.uci.ics.jung.graph.ArchetypeEdge;
 import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.ArchetypeGraph;
-import edu.uci.ics.jung.graph.Graph;
 import edu.uci.ics.jung.utils.UserDataContainer;
 import edu.uci.ics.jung.utils.DefaultUserData;
 import edu.uci.ics.jung.utils.Pair;
-
-import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.tooling.GlobalGraphOperations;
-import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
 
 import java.util.Set;
 import java.util.LinkedHashSet;
@@ -73,58 +66,15 @@ public class neoAsJungEdge implements Edge
             throw new IllegalStateException("Incident edges don't match with those previously provided");
         mGraphDb = g;
         mNeoRelationship = r;
-        Iterator i = mNeoRelationship.getPropertyKeys().iterator();
-        while (i.hasNext())
-        {
-            String k = (String)i.next();
+        Iterator<String> i = mNeoRelationship.getPropertyKeys().iterator();
+        while (i.hasNext()) {
+            String k = i.next();
             mProp.addUserDatum(k,mNeoRelationship.getProperty(k),new CopyAction.Shared());
         }
         mProp.addUserDatum("neoType",mNeoRelationship.getType().name(),new CopyAction.Shared());
         mProp.addUserDatum("neoURL",new String("relationship/"+mNeoRelationship.getId()),new CopyAction.Shared());
     }
 
-    /**
-     * Manage "connection."  Basically, the Jung framework supports Element
-     * objects (Edges and Vertices) that don't belong to any graph yet.  These
-     * Elements are then "added" to a graph.  So this stuff is to implement
-     * that concept around the Neo4J objects, which don't have that concept.
-     * We always keep a copy of the property data and incident vertices for
-     * this edge.  Whenever we can infer what Neo4J DB we should be operating
-     * in, we "connect" to it.  When we're connected, our underlying Neo4J
-     * object is not null.  When we disconnect, we delete ourselves from the
-     * underlying object.
-     */
-    /****** -----[ Gonna disable this all for now.  Let's assume that no orphans are ever made. ]
-    public boolean isConnected()
-    {
-        return (mNeoRelationship != null);
-    }
-    public void connect(GraphDatabaseService g)
-    {
-        if (isConnected())
-            return;
-        mGraphDb = g;
-        if (mFrom == null || mTo == null)
-            throw new IllegalStateException("This neoAsJung object does not have enough information to connect");
-        if (mFrom.getGraphDb() != mTo.getGraphDb())
-            throw new IllegalStateException("Adjacent vertices must be in the same graph");
-        if (mGraphDb == null)
-            mGraphDb = mFrom.getGraphDb();
-        if (mType == null)
-            mType = DefaultRelationshipType.IS_CONNECTED_TO;
-        mFrom.connect();
-        mTo.connect();
-        mNeoRelationship = mFrom.getNode().createRelationshipTo(mTo.getNode(),mType);
-    }
-    public void connect()
-    {
-        connect(mGraphDb);
-    }
-    public void disconnect()
-    {
-        mNeoRelationship.delete();
-        mNeoRelationship = null;
-    }
 
     /*****************************************************
      *****************************************************
@@ -190,7 +140,7 @@ public class neoAsJungEdge implements Edge
      */
     public Set getIncidentVertices()
     {
-        Set s = new LinkedHashSet(2);
+        Set<neoAsJungVertex> s = new LinkedHashSet<neoAsJungVertex>(2);
         s.add(mFrom);
         s.add(mTo);
         return s;
@@ -343,10 +293,11 @@ public class neoAsJungEdge implements Edge
      * @param datum    the datum being added
      * @param copyAct  the CopyAction of the datum being added
      */
-    public void addUserDatum(Object key, Object datum, CopyAction copyAct)
-    {
+    public void addUserDatum(Object key, Object datum, CopyAction copyAct) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoRelationship.setProperty((String)key,datum); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoRelationship.setProperty((String)key,datum);
+            }
         mProp.addUserDatum(key, datum, copyAct);
     }
 
@@ -356,14 +307,14 @@ public class neoAsJungEdge implements Edge
      * 
      * @param udc  the source of the user data to be copied into this container
      */
-    public void importUserData(UserDataContainer udc)
-    {
-        Iterator i = udc.getUserDatumKeyIterator();
-        while(i.hasNext())
-        {
+    public void importUserData(UserDataContainer udc) {
+        Iterator<Object> i = udc.getUserDatumKeyIterator();
+        while(i.hasNext()) {
             Object k = i.next();
             if ((k instanceof String))
-                try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoRelationship.setProperty((String)k,udc.getUserDatum(k)); }
+                try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+                	mNeoRelationship.setProperty((String)k,udc.getUserDatum(k));
+                }
         }
         mProp.importUserData(udc);
     }
@@ -410,10 +361,11 @@ public class neoAsJungEdge implements Edge
      * @param datum    the replacement/new datum
      * @param copyAct  the CopyAction for the new (key, datum) pair
      */
-    public void setUserDatum(Object key, Object datum, CopyAction copyAct)
-    {
+    public void setUserDatum(Object key, Object datum, CopyAction copyAct) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoRelationship.setProperty((String)key,datum); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoRelationship.setProperty((String)key,datum);
+            }
         mProp.setUserDatum(key,datum,copyAct);
     }
 
@@ -424,10 +376,11 @@ public class neoAsJungEdge implements Edge
      * @param key      the key of the datum to be removed
      * @return Object  the datum removed
      */
-    public Object removeUserDatum(Object key)
-    {
+    public Object removeUserDatum(Object key) {
         if ((key instanceof String))
-            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) { mNeoRelationship.removeProperty((String)key); }
+            try (Transaction tx = mGraphDb.getGraphDb().beginTx()) {
+            	mNeoRelationship.removeProperty((String)key);
+            }
         return mProp.removeUserDatum(key);
     }
 

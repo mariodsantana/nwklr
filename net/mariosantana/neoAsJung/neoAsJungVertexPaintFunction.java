@@ -6,7 +6,6 @@ import java.awt.Paint;
 import edu.uci.ics.jung.graph.Vertex;
 import net.mariosantana.neoAsJung.neoAsJungVertex;
 import edu.uci.ics.jung.graph.decorators.VertexPaintFunction;
-import edu.uci.ics.jung.graph.decorators.PickableVertexPaintFunction;
 import edu.uci.ics.jung.visualization.PickedInfo;
 
 public class neoAsJungVertexPaintFunction implements VertexPaintFunction {
