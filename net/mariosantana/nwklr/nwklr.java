@@ -14,6 +14,7 @@ import java.util.List;
 import java.lang.reflect.Constructor;
 import java.lang.IllegalArgumentException;
 import java.awt.BorderLayout;
+import java.awt.Checkbox;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -42,6 +43,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 
+import org.apache.commons.collections.Predicate;
 import org.apache.commons.collections.PredicateUtils;
 
 import net.mariosantana.neoAsJung.neoAsJungEdge;
@@ -91,7 +93,7 @@ public class nwklr extends JApplet {
 	protected static nwklrModalGraphMouse mModalGraphMouse;
 	protected static PluggableRenderer renderer;
 	protected static JPanel gPanel;
-	protected static JPanel cPane;
+	protected static JPanel cPanel;
 	protected static JTextArea queryField;
 	protected static JFrame mainFrame;
 	protected static JSplitPane mainPane;
@@ -101,6 +103,7 @@ public class nwklr extends JApplet {
 	protected static UserDataContainer udc;
 	protected static nwklrWrappingPickingGraphMousePlugin mPickingMouseWrapper;
 	protected static nwklrWrappingTranslatingGraphMousePlugin mTranslatingMouseWrapper;
+	protected static Checkbox arrowCheckbox;
 
 	/**
 	 * Just like PickingGraphMousePlugin, but refresh the properties displayed
@@ -309,9 +312,13 @@ public class nwklr extends JApplet {
 	/**
 	 * Manage the tooltips in the graph visualization
 	 */
-	private static final class nwklrToolTipFunction implements ToolTipFunction {
+	private static class nwklrToolTipFunction implements ToolTipFunction {
+		private Graph g;
+		public nwklrToolTipFunction(Graph graph) {
+			this.g = graph;
+		}
 		public String getToolTipText(MouseEvent event) {
-			return null;
+			return String.format("%d Nodes, %d Edges",g.numVertices(),g.numEdges());
 		}
 		public String getToolTipText(Vertex v) {
 			return (String)v.getUserDatum("name");
@@ -324,7 +331,7 @@ public class nwklr extends JApplet {
 	/**
 	 * Return the arrow shape used in the visualization
 	 */
-	private static final class nwklrEdgeArrowFunction implements EdgeArrowFunction {
+	private static class nwklrEdgeArrowFunction implements EdgeArrowFunction {
 	    protected Shape aka_arrow;
 	    protected Shape comm_arrow;
 	    
@@ -343,6 +350,19 @@ public class nwklr extends JApplet {
 	    }
 	}
 
+	/**
+	 * Return the arrow shape used in the visualization
+	 */
+	private static class nwklrEdgeArrowPredicate implements Predicate {
+		private Checkbox arrowCheckbox;
+		public nwklrEdgeArrowPredicate(Checkbox checkbox) {
+			this.arrowCheckbox = checkbox;
+		}
+		public boolean evaluate(Object arg0) {
+			return this.arrowCheckbox.getState();
+		}
+	}
+
 	
 	private static JPanel getGraphPanel() {
 		layout = new FRLayout(g);
@@ -352,12 +372,11 @@ public class nwklr extends JApplet {
 		renderer.setEdgePaintFunction(new neoAsJungEdgePaintFunction(
 				Color.black, null));
 		renderer.setEdgeArrowFunction(new nwklrEdgeArrowFunction(8,6,3));
-		renderer.setEdgeArrowPredicate(PredicateUtils.truePredicate());
+		renderer.setEdgeArrowPredicate(new nwklrEdgeArrowPredicate(arrowCheckbox));
 		vv = new VisualizationViewer(layout, renderer);
-		mModalGraphMouse = new nwklrModalGraphMouse();
 		vv.setGraphMouse(mModalGraphMouse);
 		vv.setPickSupport(new ShapePickSupport());
-		vv.setToolTipFunction(new nwklrToolTipFunction());
+		vv.setToolTipFunction(new nwklrToolTipFunction(g));
 		
 		JPanel jp = new JPanel();
 		jp.setBackground(Color.WHITE);
@@ -407,6 +426,7 @@ public class nwklr extends JApplet {
 
 		queryField = new JTextArea(g.getCypherFilter());
 		JScrollPane queryPane = new JScrollPane(queryField);
+		
 		JButton filterButton = new JButton();
 		filterButton
 				.setToolTipText("Apply the CYPHER query as a filter (A blank value will reset to the default filter)");
@@ -430,17 +450,22 @@ public class nwklr extends JApplet {
 				}
 			}
 		});
-
-		JPanel filterPanel = new JPanel();
-		filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.Y_AXIS));
-		filterPanel.add(queryPane);
-		filterPanel.add(filterButton);
+		arrowCheckbox.setMinimumSize(new Dimension(arrowCheckbox.getMinimumSize().width,filterButton.getMinimumSize().height));
+		arrowCheckbox.setMaximumSize(new Dimension(arrowCheckbox.getMaximumSize().width,filterButton.getMaximumSize().height));
+		arrowCheckbox.setPreferredSize(new Dimension(arrowCheckbox.getPreferredSize().width,filterButton.getPreferredSize().height));
+		arrowCheckbox.setSize(new Dimension(arrowCheckbox.getSize().width,filterButton.getSize().height));
+		JPanel filterAndArrowPanel = new JPanel();
+		//filterAndArrowPanel.setPreferredSize(new Dimension(1,filterButton.getHeight()));
+		filterAndArrowPanel.setLayout(new BoxLayout(filterAndArrowPanel, BoxLayout.X_AXIS));
+		filterAndArrowPanel.add(filterButton);
+		filterAndArrowPanel.add(arrowCheckbox);
 
 		JPanel jp = new JPanel();
 		jp.setLayout(new BoxLayout(jp, BoxLayout.Y_AXIS));
 		jp.add(modeBox);
 		jp.add(jcbLayout);
-		jp.add(filterPanel);
+		jp.add(queryPane);
+		jp.add(filterAndArrowPanel);
 		jp.add(propPane);
 		return jp;
 	} // getControlPanel()
@@ -464,14 +489,18 @@ public class nwklr extends JApplet {
 		g = new neoAsJungGraph(g_base + "/data/graph.db", g_base
 				+ "/conf/neo4j-server.properties");
 
+		// initialize a couple of things used both in cPanel and gPanel
+		mModalGraphMouse = new nwklrModalGraphMouse();
+		arrowCheckbox = new Checkbox("Arrows",false);
+
 		gPanel = getGraphPanel();
-		cPane = getControlPanel();
+		cPanel = getControlPanel();
 		mainFrame = new JFrame();
-		mainPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, gPanel, cPane);
+		mainPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, gPanel, cPanel);
 		mainPane.setOneTouchExpandable(true);
 		Dimension minimumSize = new Dimension(100, 50);
 		gPanel.setMinimumSize(minimumSize);
-		cPane.setMinimumSize(minimumSize);
+		cPanel.setMinimumSize(minimumSize);
 		mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		mainFrame.setPreferredSize(mainFrame.getToolkit().getScreenSize());
 		mainFrame.getContentPane().add(mainPane);
