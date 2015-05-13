@@ -18,6 +18,7 @@ import org.neo4j.cypher.javacompat.ExecutionEngine;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
+import scala.collection.convert.Wrappers.SeqWrapper;
 
 import java.util.Map;
 import java.util.Set;
@@ -75,8 +76,10 @@ public class neoAsJungGraph implements Graph {
 	 * The CYPHER query that was used to filter the nodes we have right now.
 	 */
 	protected String defaultCypherFilter = "// See http://neo4j.com/docs/stable/cypher-query-lang.html\n"
-			+ "// Sample: find first 10 streams-or-aka edges, and associated nodes\n"
-			+ "MATCH (s)-[r:strTo|aka]->(d) return r limit 10";
+			+ "// Sample: show comms between ethernet nodes, but filter out broadcast eth packets\n"
+			+ "MATCH (s {type:'eth'})-[r]->(d {type:'eth'})\n"
+			+ "WHERE r.`eth.dst` <> 'ff:ff:ff:ff:ff:ff'\n"
+			+ "RETURN r";
 	protected String cypherFilter = defaultCypherFilter;
 	public String getCypherFilter() {
 		return this.cypherFilter;
@@ -202,46 +205,54 @@ public class neoAsJungGraph implements Graph {
 		mVertices = new HashSet<neoAsJungVertex>();
 		mEdges = new HashSet<neoAsJungEdge>();
 		try (Transaction tx = mNeoGraphDb.beginTx()) {
-			Object neoObj; // neo4j objects (nodes or relationships) returned from query
 			Iterator<Map<String,Object>> rMapIterator = this.mExecutionEngine.execute(this.cypherFilter).iterator();
-			int rMapCount = 0;
 			while (rMapIterator.hasNext()) {
-				rMapCount++;
 				Iterator<Object> neoObjects = rMapIterator.next().values().iterator();
-				int rObjCount = 0;
-				while (neoObjects.hasNext()) {
-					rObjCount++;
-					neoObj = neoObjects.next();
-					if (neoObj instanceof Node) {
-						neoAsJungVertex najV = new neoAsJungVertex();
-						najV.initialize((Node) neoObj, this);
-						mVertices.add(najV);
-					} else if (neoObj instanceof Relationship) {
-						Relationship rel = (Relationship) neoObj;
-						neoAsJungVertex najVfrom = getVertexFor(rel.getStartNode());
-						if (najVfrom == null) {
-							najVfrom = new neoAsJungVertex();
-							najVfrom.initialize(rel.getStartNode(), this);
-							mVertices.add(najVfrom);
-						}
-						neoAsJungVertex najVto = getVertexFor(rel.getEndNode());
-						if (najVto == null) {
-							najVto = new neoAsJungVertex();
-							najVto.initialize(rel.getEndNode(), this);
-							mVertices.add(najVto);
-						}
-						neoAsJungEdge najE = new neoAsJungEdge(najVfrom, najVto);
-						najE.initialize(rel, this);
-						mEdges.add(najE);
-					} else {
-						// FIXME: handle arrays of Node/Relationship objects as well
-						System.err.println("Got a non-Node/non-Relationship result from cypherFilter.");
-						System.err.println("Cypher query was -----'"+this.cypherFilter+"'-----");
-						System.err.println("Object gotten was: "+neoObj);
-						System.exit(1);
-					}
-				}
+				while (neoObjects.hasNext())
+					processFilterResult(neoObjects.next());
 			}
+		}
+	}
+	
+	/**
+	 * Process a result object from a CYPHER query.
+	 * Recurses in case of array results.
+	 * Takes place within a neo4j transaction.
+	 */
+	private void processFilterResult(Object o) {
+		if (o instanceof SeqWrapper) {
+			Iterator<Object> i = ((SeqWrapper<Object>)o).iterator();
+			while (i.hasNext())
+				processFilterResult(i.next());
+			return;
+		}
+		if (o instanceof Node) {
+			neoAsJungVertex najV = new neoAsJungVertex();
+			najV.initialize((Node) o, this);
+			mVertices.add(najV);
+		} else if (o instanceof Relationship) {
+			Relationship rel = (Relationship) o;
+			neoAsJungVertex najVfrom = getVertexFor(rel.getStartNode());
+			if (najVfrom == null) {
+				najVfrom = new neoAsJungVertex();
+				najVfrom.initialize(rel.getStartNode(), this);
+				mVertices.add(najVfrom);
+			}
+			neoAsJungVertex najVto = getVertexFor(rel.getEndNode());
+			if (najVto == null) {
+				najVto = new neoAsJungVertex();
+				najVto.initialize(rel.getEndNode(), this);
+				mVertices.add(najVto);
+			}
+			neoAsJungEdge najE = new neoAsJungEdge(najVfrom, najVto);
+			najE.initialize(rel, this);
+			mEdges.add(najE);
+		} else {
+			System.err.println("Got a non-Node/non-Relationship result from cypherFilter.");
+			System.err.println("Cypher query was -----'"+this.cypherFilter+"'-----");
+			System.err.println("Got "+o.getClass().getName()+" object: "+o);
+			System.err.println("instanceof SeqWrapper: "+(o instanceof SeqWrapper));
+			System.exit(1);
 		}
 	}
 

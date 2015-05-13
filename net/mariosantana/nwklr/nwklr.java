@@ -44,7 +44,10 @@ import javax.swing.tree.DefaultTreeModel;
 import net.mariosantana.neoAsJung.neoAsJungGraph;
 import net.mariosantana.neoAsJung.neoAsJungEdgePaintFunction;
 import net.mariosantana.neoAsJung.neoAsJungVertexPaintFunction;
+import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.Graph;
+import edu.uci.ics.jung.graph.Vertex;
+import edu.uci.ics.jung.graph.decorators.ToolTipFunction;
 import edu.uci.ics.jung.utils.UserDataContainer;
 import edu.uci.ics.jung.visualization.PluggableRenderer;
 import edu.uci.ics.jung.visualization.ShapePickSupport;
@@ -294,6 +297,21 @@ public class nwklr extends JApplet {
 		}
 	}
 	
+	/**
+	 * Manage the tooltips in the graph visualization
+	 */
+	private static final class nwklrToolTipFunction implements ToolTipFunction {
+		public String getToolTipText(MouseEvent event) {
+			return null;
+		}
+		public String getToolTipText(Vertex v) {
+			return (String)v.getUserDatum("name");
+		}
+		public String getToolTipText(Edge e) {
+			return (String)e.getUserDatum("frame.protocols");
+		}
+	}
+	
 	private static JPanel getGraphPanel() {
 		layout = new FRLayout(g);
 		renderer = new PluggableRenderer();
@@ -302,10 +320,11 @@ public class nwklr extends JApplet {
 		renderer.setEdgePaintFunction(new neoAsJungEdgePaintFunction(
 				Color.black, null));
 		vv = new VisualizationViewer(layout, renderer);
-
 		mModalGraphMouse = new nwklrModalGraphMouse();
 		vv.setGraphMouse(mModalGraphMouse);
 		vv.setPickSupport(new ShapePickSupport());
+		vv.setToolTipFunction(new nwklrToolTipFunction());
+		
 		JPanel jp = new JPanel();
 		jp.setBackground(Color.WHITE);
 		jp.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
