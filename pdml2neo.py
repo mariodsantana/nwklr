@@ -201,7 +201,10 @@ class pdml2neoContentHandler(sax.ContentHandler):
 			sys.exit()
 		# Now it exists, update it
 		strToR["pkt_count"] += 1
-		for k,v in p.items(): strToR[k]=v
+		for k,v in p.items():
+			# don't shorten frames.protocols (e.g., don't replace eth.ip.tcp.http with eth.ip.tcp 
+			if k != "frames.protocols" or len(strToR[k]) < len(v):
+				strToR[k]=v
 		strToR.push()
 		pktToR["inStr"] = strToR.ref
 		pktToR.push()
