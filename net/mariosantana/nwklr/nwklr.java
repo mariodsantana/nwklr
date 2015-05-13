@@ -17,6 +17,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Shape;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
@@ -41,14 +42,22 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 
+import org.apache.commons.collections.PredicateUtils;
+
+import net.mariosantana.neoAsJung.neoAsJungEdge;
 import net.mariosantana.neoAsJung.neoAsJungGraph;
 import net.mariosantana.neoAsJung.neoAsJungEdgePaintFunction;
 import net.mariosantana.neoAsJung.neoAsJungVertexPaintFunction;
+import edu.uci.ics.jung.graph.DirectedEdge;
 import edu.uci.ics.jung.graph.Edge;
 import edu.uci.ics.jung.graph.Graph;
+import edu.uci.ics.jung.graph.UndirectedEdge;
 import edu.uci.ics.jung.graph.Vertex;
+import edu.uci.ics.jung.graph.decorators.DirectionalEdgeArrowFunction;
+import edu.uci.ics.jung.graph.decorators.EdgeArrowFunction;
 import edu.uci.ics.jung.graph.decorators.ToolTipFunction;
 import edu.uci.ics.jung.utils.UserDataContainer;
+import edu.uci.ics.jung.visualization.ArrowFactory;
 import edu.uci.ics.jung.visualization.PluggableRenderer;
 import edu.uci.ics.jung.visualization.ShapePickSupport;
 import edu.uci.ics.jung.visualization.VisualizationViewer;
@@ -312,6 +321,29 @@ public class nwklr extends JApplet {
 		}
 	}
 	
+	/**
+	 * Return the arrow shape used in the visualization
+	 */
+	private static final class nwklrEdgeArrowFunction implements EdgeArrowFunction {
+	    protected Shape aka_arrow;
+	    protected Shape comm_arrow;
+	    
+	    public nwklrEdgeArrowFunction(int length, int width, int notch_depth) {
+	        aka_arrow = ArrowFactory.getNotchedArrow(width, length, notch_depth);
+	        comm_arrow = ArrowFactory.getWedgeArrow(width, length);
+	    }
+	    public Shape getArrow(Edge e) {
+			if (!(e instanceof neoAsJungEdge))
+				throw new IllegalArgumentException("Argument must be a neoAsJung type");
+			neoAsJungEdge najE = (neoAsJungEdge) e;
+	        if (najE.getUserDatum("neoType").equals("aka"))
+	            return aka_arrow;
+	        else
+	            return comm_arrow;
+	    }
+	}
+
+	
 	private static JPanel getGraphPanel() {
 		layout = new FRLayout(g);
 		renderer = new PluggableRenderer();
@@ -319,6 +351,8 @@ public class nwklr extends JApplet {
 				renderer));
 		renderer.setEdgePaintFunction(new neoAsJungEdgePaintFunction(
 				Color.black, null));
+		renderer.setEdgeArrowFunction(new nwklrEdgeArrowFunction(8,6,3));
+		renderer.setEdgeArrowPredicate(PredicateUtils.truePredicate());
 		vv = new VisualizationViewer(layout, renderer);
 		mModalGraphMouse = new nwklrModalGraphMouse();
 		vv.setGraphMouse(mModalGraphMouse);
