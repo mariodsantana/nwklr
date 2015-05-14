@@ -75,11 +75,21 @@ public class neoAsJungGraph implements Graph {
 	/**
 	 * The CYPHER query that was used to filter the nodes we have right now.
 	 */
-	protected String defaultCypherFilter = "// See http://neo4j.com/docs/stable/cypher-query-lang.html\n"
+	/* This sample is a little more complicated... */
+	protected String defaultCypherFilter = "// Sample: Find first 10 edges where one of the r.`ip.addr` values is RFC1918\n"
+			+ "MATCH ()-[r]->() "
+			+ "UNWIND r.`ip.addr` as a "
+			+ "WITH r as r, a as a "
+			+ "WHERE a =~ '172.(1[6-9]|2[0-9]|3[0-2])\\\\..*|10\\\\..*|192.168\\\\..*' "
+			+ "RETURN distinct(r) "
+			+ "LIMIT 10";
+			/* */
+	/* This sample is a little simpler
+    protected String defaultCypherFilter = "// See http://neo4j.com/docs/stable/cypher-query-lang.html\n"
 			+ "// Sample: show comms between ethernet nodes, but filter out broadcast eth packets\n"
 			+ "MATCH (s {type:'eth'})-[r]->(d {type:'eth'})\n"
 			+ "WHERE r.`eth.dst` <> 'ff:ff:ff:ff:ff:ff'\n"
-			+ "RETURN r";
+			+ "RETURN r"; /* */
 	protected String cypherFilter = defaultCypherFilter;
 	public String getCypherFilter() {
 		return this.cypherFilter;

@@ -12,30 +12,31 @@ public class neoAsJungVertexPaintFunction implements VertexPaintFunction {
 
 	protected Paint eth_fill_paint = Color.CYAN;
 	protected Paint eth_picked_fill_paint = Color.BLUE;
+	
     protected Paint ip_fill_paint = Color.PINK;
     protected Paint ip_picked_fill_paint = Color.RED;
-	protected Paint default_fill_paint = Color.GRAY;
+
+    protected Paint default_fill_paint = Color.GRAY;
 	protected Paint default_picked_fill_paint = Color.BLACK;
-    protected Paint draw_paint = Color.DARK_GRAY;
-    protected PickedInfo pi;
+    
+	protected Paint draw_paint = Color.DARK_GRAY;
+    
+	protected PickedInfo pi;
     
     /**
      * @param pi            specifies which vertices report as "picked"
      */
-    public neoAsJungVertexPaintFunction(PickedInfo pi)
-    {
+    public neoAsJungVertexPaintFunction(PickedInfo pi) {
         if (pi == null)
             throw new IllegalArgumentException("PickedInfo instance must be non-null");
         this.pi = pi;
     }
 
-    public Paint getDrawPaint(Vertex v)
-    {
+    public Paint getDrawPaint(Vertex v) {
         return draw_paint;
     }
 
-    public Paint getFillPaint(Vertex v)
-    {
+    public Paint getFillPaint(Vertex v) {
 		if (!(v instanceof neoAsJungVertex))
 			throw new IllegalArgumentException("This PaintFunction takes only neoAsJung objects");
 		neoAsJungVertex najV = (neoAsJungVertex)v;

@@ -18,7 +18,11 @@ import java.awt.Checkbox;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Rectangle;
 import java.awt.Shape;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
@@ -29,6 +33,8 @@ import java.awt.ItemSelectable;
 
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JApplet;
 import javax.swing.JButton;
@@ -38,10 +44,16 @@ import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.JTree;
+import javax.swing.SwingUtilities;
+import javax.swing.event.TreeSelectionEvent;
+import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreePath;
+import javax.swing.tree.TreeSelectionModel;
 
 import org.apache.commons.collections.Predicate;
 import org.apache.commons.collections.PredicateUtils;
@@ -104,37 +116,67 @@ public class nwklr extends JApplet {
 	protected static nwklrWrappingPickingGraphMousePlugin mPickingMouseWrapper;
 	protected static nwklrWrappingTranslatingGraphMousePlugin mTranslatingMouseWrapper;
 	protected static Checkbox arrowCheckbox;
+	protected static JTextField statusField;
+
 
 	/**
 	 * Just like PickingGraphMousePlugin, but refresh the properties displayed
-	 * in the infopane, and turn on Transform mode if click is not on a vertex
+	 * in the infopane, and use Transform mode if click is not on a vertex
 	 * or edge.
+	 * 
+	 * @note This is ugly, but it accomplishes a combined PICKING and TRANSFORMING mouse mode
+	 * at the same time, as long as Jung is set to be in PICKING mode.
+	 *
+	 * TODO: Refactor nwklrWrapping*GraphMousePlugin stuff
 	 */
-	private static class nwklrWrappingPickingGraphMousePlugin extends
-			PickingGraphMousePlugin implements MouseListener,
-			MouseMotionListener {
+	private static class nwklrWrappingPickingGraphMousePlugin extends PickingGraphMousePlugin implements MouseListener, MouseMotionListener {
 		public nwklrWrappingPickingGraphMousePlugin() {
 			super();
 		}
-
-		public nwklrWrappingPickingGraphMousePlugin(int selectionModifiers,
-				int addToSelectionModifiers) {
+		public nwklrWrappingPickingGraphMousePlugin(int selectionModifiers, int addToSelectionModifiers) {
 			super(selectionModifiers, addToSelectionModifiers);
 		}
-
+		private MouseEvent button3MouseEventToButton1MouseEvent(MouseEvent e) {
+			int newModifiers = (e.getModifiers()-e.BUTTON3_MASK) | e.BUTTON1_MASK;
+			MouseEvent newMouseEvent =
+					//            (Component source,         int id,    long when,   int modifiers, int x,    int y,    int xAbs,         int yAbs,         int clickCount,    boolean popupTrigger, int button)
+					new MouseEvent((Component)e.getSource(), e.getID(), e.getWhen(), newModifiers,  e.getX(), e.getY(), e.getXOnScreen(), e.getYOnScreen(), e.getClickCount(), e.isPopupTrigger(),   e.BUTTON1);
+			//System.out.println("Orig: "+e.paramString());
+			//System.out.println("New:  "+newMouseEvent.paramString());
+			return newMouseEvent;
+		}
+		public void mouseReleased(MouseEvent e) {
+			statusField.setText("Processing mouseRelease in Picking mode");
+			if (SwingUtilities.isRightMouseButton(e)) {
+				statusField.setText("Right-click mousePress in PICKING, processing as left-click but not picking");
+				super.mouseReleased(button3MouseEventToButton1MouseEvent(e));
+				return;
+			}
+			super.mouseReleased(e);			
+		}
 		public void doMousePressed(MouseEvent e, boolean realMousePress) {
-			System.out.println("doing Picking mousePressed");
+			statusField.setText("Processing mousePress in Picking mode");
+			if (SwingUtilities.isRightMouseButton(e)) {
+				statusField.setText("Right-click mousePress in PICKING, processing as left-click but not picking");
+				super.mousePressed(button3MouseEventToButton1MouseEvent(e));
+				return;
+			}
 			super.mousePressed(e);
 			if (edge == null && vertex == null) {
+				if (realMousePress) {
+					statusField.setText("Nothing Picked on real PICKING mousePress, calling TRANSLATING mousePress");
+					mTranslatingMouseWrapper.doMousePressed(e,false);
+				}
+				statusField.setText("Nothing Picked, blanking propTree");
 				propRoot.setUserObject("Select an element");
 				propTree.setModel(new DefaultTreeModel(propRoot));
 				return;
 			} else if (vertex != null) {
+				statusField.setText("Vertex Picked");
 				udc = vertex;
-				propRoot = new DefaultMutableTreeNode(
-						udc.getUserDatum("Label0") + " "
-								+ udc.getUserDatum("name"));
+				propRoot = new DefaultMutableTreeNode(udc.getUserDatum("Label0") + " " + udc.getUserDatum("name"));
 			} else {
+				statusField.setText("Edge Picked");
 				udc = edge;
 				String rType = (String) udc.getUserDatum("neoType");
 				String name = rType + "@" + udc.getUserDatum("neoURL");
@@ -145,6 +187,7 @@ public class nwklr extends JApplet {
 						name += " in NO STREAM";
 				propRoot = new DefaultMutableTreeNode(name);
 			}
+			statusField.setText("Creating propTree");
 			Iterator<Object> i = udc.getUserDatumKeyIterator();
 			while (i.hasNext()) {
 				Object key = i.next();
@@ -162,7 +205,6 @@ public class nwklr extends JApplet {
 				// Split the key on '.', use components as tree path, and
 				// walk the tree along that path, creating tree nodes as
 				// necessary.
-				// TODO: make it do something when a treenode is clicked
 				String[] path = k.split("\\.");
 				DefaultMutableTreeNode ptr = propRoot;
 				PATH_ELEMENT: for (int pCount = 0; pCount < path.length; pCount++) {
@@ -191,69 +233,66 @@ public class nwklr extends JApplet {
 				}
 				ptr.setUserObject(ptr.toString() + ": " + userdatumstring);
 			}
-			// redraw the tree!
+			statusField.setText("Redrawing propTree");
 			propTree.setModel(new DefaultTreeModel(propRoot));
 		}
-
-		@Override
 		public void mousePressed(MouseEvent e) {
-			System.out.println("Got mousePressed in PICKING mouse");
+			statusField.setText("Got mousePressed in PICKING mouse");
 			doMousePressed(e, true);
 		}
-
-		@Override
 		public void mouseDragged(MouseEvent e) {
-			System.out.println("Got mouseDragged in PICKING mouse");
-			super.mouseDragged(e);
+			statusField.setText("Got mouseDragged in PICKING mouse");
+			if (edge == null && vertex == null) {
+				if (SwingUtilities.isRightMouseButton(e)) {
+					statusField.setText("Right-click drag on background, doing PICKING mouse drag");
+					super.mouseDragged(button3MouseEventToButton1MouseEvent(e));
+				} else {
+					statusField.setText("Doing Translating mouseDragged even though we're in Picking mode");
+					mTranslatingMouseWrapper.mouseDragged(e);
+				}
+			} else {
+				statusField.setText("Drag on element, doing PICKING mouse drag");
+				super.mouseDragged(e);
+			}
 		}
 	}
 
+
 	/**
-	 * Just like TranslatingGraphMousePlugin, but turn on picking mode if click
+	 * Just like TranslatingGraphMousePlugin, but use picking mode if click
 	 * is on a Vertex or Edge.
 	 */
-	private static class nwklrWrappingTranslatingGraphMousePlugin extends
-			TranslatingGraphMousePlugin implements MouseListener,
-			MouseMotionListener {
+	private static class nwklrWrappingTranslatingGraphMousePlugin extends TranslatingGraphMousePlugin implements MouseListener, MouseMotionListener {
 		public nwklrWrappingTranslatingGraphMousePlugin() {
 			super();
 		}
-
 		public nwklrWrappingTranslatingGraphMousePlugin(int modifiers) {
 			super(modifiers);
 		}
-
-		public void doMousePressed(MouseEvent e, boolean realPress) {
-			System.out.println("doing Translating mousePressed");
-			if (realPress) {
-				System.out
-						.println("doing mousePressed on PickingMouse even through we're in transforming mode");
+		public void doMousePressed(MouseEvent e, boolean realMousePress) {
+			statusField.setText("doing Translating mousePressed");
+			super.mousePressed(e);
+			if (realMousePress) {
+				statusField.setText("doing mousePressed on PickingMouse even through we're in transforming mode");
 				mPickingMouseWrapper.doMousePressed(e, false);
 			}
-			super.mousePressed(e);
 		}
-
-		@Override
 		public void mousePressed(MouseEvent e) {
-			System.out.println("Got mousePressed in TRANSLATING mouse");
-			doMousePressed(e, true);
+			doMousePressed(e,true);
 		}
-
-		@Override
 		public void mouseDragged(MouseEvent e) {
-			System.out.println("Got mouseDragged in TRANSLATING mouse");
+			statusField.setText("Got mouseDragged in TRANSLATING mouse");
 			super.mouseDragged(e);
 		}
 	}
+
 
 	/**
 	 * Just like the DefaultModalGraphMouse, except: - use a nwklrWrapping
 	 * version of the PickingGraphMousePlugin - start out in PICKING mode
 	 * instead of TRANSFORMING
 	 */
-	private static class nwklrModalGraphMouse extends DefaultModalGraphMouse
-			implements ModalGraphMouse, ItemSelectable {
-		@Override
+	private static class nwklrModalGraphMouse extends DefaultModalGraphMouse implements ModalGraphMouse, ItemSelectable {
 		protected void loadPlugins() {
 			// pickingPlugin = new PickingGraphMousePlugin();
 			mPickingMouseWrapper = new nwklrWrappingPickingGraphMousePlugin();
@@ -277,20 +316,21 @@ public class nwklr extends JApplet {
 		}
 	}
 
+
 	/**
 	 * Manage switching between layouts.
 	 */
 	private static final class LayoutChooser implements ActionListener {
 		protected static JComboBox<Class<?>> jcbLayoutChooser;
-
 		private LayoutChooser(JComboBox<Class<?>> jcb) {
 			super();
 			jcbLayoutChooser = jcb;
 		}
-
 		public void doAction(Graph aGraph) {
 			Class<?> layoutClass = (Class<?>) jcbLayoutChooser.getSelectedItem();
 			Object[] constructorArgs = { aGraph };
+			if (statusField != null)
+				statusField.setText("Redrawing Graph with layout "+layoutClass.toString());
 			try {
 				Constructor<?> constructor = layoutClass
 						.getConstructor(new Class[] { Graph.class });
@@ -302,13 +342,12 @@ public class nwklr extends JApplet {
 				e.printStackTrace();
 			}
 		}
-
-		@Override
 		public void actionPerformed(ActionEvent arg0) {
 			doAction(g);
 		}
 	}
 	
+
 	/**
 	 * Manage the tooltips in the graph visualization
 	 */
@@ -318,23 +357,26 @@ public class nwklr extends JApplet {
 			this.g = graph;
 		}
 		public String getToolTipText(MouseEvent event) {
+			statusField.setText("Generating MouseEvent toolTip");
 			return String.format("%d Nodes, %d Edges",g.numVertices(),g.numEdges());
 		}
 		public String getToolTipText(Vertex v) {
+			statusField.setText("Generating Vertex toolTip");
 			return (String)v.getUserDatum("name");
 		}
 		public String getToolTipText(Edge e) {
+			statusField.setText("Generating Edge toolTip");
 			return (String)e.getUserDatum("frame.protocols");
 		}
 	}
 	
+
 	/**
 	 * Return the arrow shape used in the visualization
 	 */
 	private static class nwklrEdgeArrowFunction implements EdgeArrowFunction {
 	    protected Shape aka_arrow;
 	    protected Shape comm_arrow;
-	    
 	    public nwklrEdgeArrowFunction(int length, int width, int notch_depth) {
 	        aka_arrow = ArrowFactory.getNotchedArrow(width, length, notch_depth);
 	        comm_arrow = ArrowFactory.getWedgeArrow(width, length);
@@ -350,30 +392,166 @@ public class nwklr extends JApplet {
 	    }
 	}
 
+
 	/**
 	 * Return the arrow shape used in the visualization
 	 */
 	private static class nwklrEdgeArrowPredicate implements Predicate {
-		private Checkbox arrowCheckbox;
-		public nwklrEdgeArrowPredicate(Checkbox checkbox) {
-			this.arrowCheckbox = checkbox;
-		}
 		public boolean evaluate(Object arg0) {
-			return this.arrowCheckbox.getState();
+			return arrowCheckbox.getState();
 		}
 	}
 
+
+	/**
+	 * Does things when a node is selected in the propTree
+	 */
+	private static class nwklrTreeSelectionListener implements TreeSelectionListener {
+	    public void valueChanged(TreeSelectionEvent e) {
+	    	statusField.setText("Processing change in property selection");
+	    	TreePath path = propTree.getSelectionPath();
+	        if (path == null || path.getParentPath() == null) {
+	        	// nothing selected, or root selected
+	        	statusField.setText("Clearing picked edges/vertices");
+	        	vv.getPickedState().clearPickedEdges();
+	        	vv.getPickedState().clearPickedVertices();
+	        	return;
+	        }
+	        statusField.setText("Parsing key/value of selected property");
+	        String key = "";
+	        for (int i=1; i < path.getPathCount(); i++) { // start at 1 to skip the root node
+	        	if (i > 1) key += ".";
+	        	key += path.getPathComponent(i).toString();
+	        }
+	        int separator = key.indexOf(':');
+	        String value = null;
+	        if (separator > -1) {
+	        	value = key.substring(separator+2);
+	        	key = key.substring(0,separator);
+	        }
+	        statusField.setText("Selecting edges that match "+key+"/"+(value==null?"NoVal":value));
+            Iterator<Edge> ie = g.getEdges().iterator();
+	        while (ie.hasNext()) {
+	        	Edge edge = ie.next();
+            	if (value == null && edge.containsUserDatumKey(key))
+            		// No value but key exists, so match! 
+            		vv.getPickedState().pick(edge,true);
+            	else if (value == null) {
+            		// No value, key doesn't exist, so presume no match...
+            		vv.getPickedState().pick(edge,false);
+            		Iterator<Object> ki = edge.getUserDatumKeyIterator();
+            		while (ki.hasNext()) {
+            			Object k = ki.next();
+            			if (k instanceof String && ((String)k).startsWith(key+".")) {
+            				// ...except the key is a valid prefix of existing key, so match and move on!
+                    		vv.getPickedState().pick(edge,true);
+                    		break;
+            			}
+            		}
+            	} else
+            		// We have a value, so it must match the userDatum's value for this key.
+            		vv.getPickedState().pick(edge,value.equals(edge.getUserDatum(key)));
+	        }
+	        statusField.setText("Selecting vertices that match "+key+"/"+(value==null?"NoVal":value));
+            Iterator<Vertex> iv = g.getVertices().iterator();
+	        while (iv.hasNext()) {
+	        	Vertex vertex = iv.next();
+            	if (value == null && vertex.containsUserDatumKey(key))
+            		// No value but key exists, so match! 
+            		vv.getPickedState().pick(vertex,true);
+            	else if (value == null) {
+            		// No value, key doesn't exist, so presume no match...
+            		vv.getPickedState().pick(vertex,false);
+            		Iterator<Object> ki = vertex.getUserDatumKeyIterator();
+            		while (ki.hasNext()) {
+            			Object k = ki.next();
+            			if (k instanceof String && ((String)k).startsWith(key+".")) {
+            				// ...except the key is a valid prefix of existing key, so match and move on!
+                    		vv.getPickedState().pick(vertex,true);
+                    		break;
+            			}
+            		}
+            	} else
+            		// We have a value, so it must match the userDatum's value for this key.
+            		vv.getPickedState().pick(vertex,value.equals(vertex.getUserDatum(key)));
+	        }
+	    }
+	}
+
+
+	/**
+	 * Performs the actions for the context menu in the propTree 
+	 */
+	private static class nwklrPropTreeContextMenuActionListener implements ActionListener {
+		public void actionPerformed(ActionEvent e) {
+			statusField.setText("Processing click on propTree context menu item");
+			if (!(e.getSource() instanceof JMenuItem)) {
+				System.err.println("Got an ActionListener with bad source:"+e.getSource());
+				System.exit(1);
+			}
+			statusField.setText("Copying CYPHER query that matches the selection to clipboard");
+			JMenuItem mi = (JMenuItem)e.getSource();
+			StringSelection s = new StringSelection(mi.getToolTipText());
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(s,s);
+		}
+	}
 	
-	private static JPanel getGraphPanel() {
+
+	/**
+	 * Pops up the context menu when a tree node is right-clicked
+	 */
+    private static class nwklrMouseListener implements MouseListener {
+        public void mouseClicked(MouseEvent e) {
+            if (!SwingUtilities.isRightMouseButton(e))
+            	return; // Right now we only handle right-clicks
+            statusField.setText("Parsing key/value of right-clicked propTree node");
+            TreePath path = propTree.getPathForLocation (e.getX(),e.getY());
+	        String key = "";
+	        for (int i=1; i < path.getPathCount(); i++) { // start at 1 to skip the root node
+	        	if (i > 1) key += ".";
+	        	key += path.getPathComponent(i).toString();
+	        }
+	        int separator = key.indexOf(':');
+	        String value = null;
+	        if (separator > -1) {
+	        	value = key.substring(separator+2);
+	        	key = key.substring(0,separator);
+	        }
+            statusField.setText("Creating propTree context menu");
+	        Rectangle pathBounds = propTree.getUI().getPathBounds(propTree,path);
+            if (pathBounds != null && pathBounds.contains(e.getX(),e.getY())) {
+            	// Text is descriptive, tooltipText is the CYPHER query
+                JMenuItem ccm = new JMenuItem("Copy CYPHER match");
+                ccm.setToolTipText(key+" = '"+value+"'");
+                ccm.addActionListener(new nwklrPropTreeContextMenuActionListener());
+                JPopupMenu menu = new JPopupMenu();
+                menu.add(ccm);
+                menu.show(propTree,pathBounds.x,pathBounds.y+pathBounds.height);
+            }
+        }
+		public void mousePressed(MouseEvent e) {
+			return; // Don't care
+		}
+		public void mouseReleased(MouseEvent e) {
+			return; // Don't care
+		}
+		public void mouseEntered(MouseEvent e) {
+			return; // Don't care
+		}
+		public void mouseExited(MouseEvent e) {
+			return; // Don't care
+		}
+    }
+	
+
+    private static JPanel getGraphPanel() {
 		layout = new FRLayout(g);
 		renderer = new PluggableRenderer();
-		renderer.setVertexPaintFunction(new neoAsJungVertexPaintFunction(
-				renderer));
-		renderer.setEdgePaintFunction(new neoAsJungEdgePaintFunction(
-				Color.black, null));
+		renderer.setVertexPaintFunction(new neoAsJungVertexPaintFunction(renderer));
+		renderer.setEdgePaintFunction(new neoAsJungEdgePaintFunction(renderer));
 		renderer.setEdgeArrowFunction(new nwklrEdgeArrowFunction(8,6,3));
-		renderer.setEdgeArrowPredicate(new nwklrEdgeArrowPredicate(arrowCheckbox));
-		vv = new VisualizationViewer(layout, renderer);
+		renderer.setEdgeArrowPredicate(new nwklrEdgeArrowPredicate());
+		vv = new VisualizationViewer(layout,renderer);
 		vv.setGraphMouse(mModalGraphMouse);
 		vv.setPickSupport(new ShapePickSupport());
 		vv.setToolTipFunction(new nwklrToolTipFunction(g));
@@ -387,17 +565,11 @@ public class nwklr extends JApplet {
 		return jp;
 	}
 
+    
 	private static JPanel getControlPanel() {
-		JComboBox modeBox = mModalGraphMouse.getModeComboBox();
-		modeBox.addItemListener(((DefaultModalGraphMouse) vv.getGraphMouse())
-				.getModeListener());
-		modeBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, modeBox
-				.getPreferredSize().height));
-
 		final JComboBox<Class<?>> jcbLayout = new JComboBox<Class<?>>(getArrayOfLayouts());
 		// use a renderer to shorten the layout name presentation
 		jcbLayout.setRenderer(new DefaultListCellRenderer() {
-			@Override
 			public Component getListCellRendererComponent(JList list,
 					Object value, int index, boolean isSelected,
 					boolean cellHasFocus) {
@@ -421,10 +593,16 @@ public class nwklr extends JApplet {
 		((DefaultTreeCellRenderer)propTree.getCellRenderer()).setLeafIcon(null);
 		((DefaultTreeCellRenderer)propTree.getCellRenderer()).setClosedIcon(null);
 		((DefaultTreeCellRenderer)propTree.getCellRenderer()).setOpenIcon(null);
+		// TODO: allow contiguous selection mode, and teach the event listener some more tricks!
+		propTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+		propTree.addTreeSelectionListener(new nwklrTreeSelectionListener());
+	    propTree.addMouseListener(new nwklrMouseListener());
+
 		propPane = new JScrollPane(propTree);
 		propPane.setBackground(Color.WHITE);
 
 		queryField = new JTextArea(g.getCypherFilter());
+		queryField.setFont(new Font(Font.MONOSPACED,Font.PLAIN,10));
 		JScrollPane queryPane = new JScrollPane(queryField);
 		
 		JButton filterButton = new JButton();
@@ -434,6 +612,7 @@ public class nwklr extends JApplet {
 		filterButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
+				statusField.setText("Applying CYPHER filter query");
 				String oldCypherFilter = g.getCypherFilter();
 				g.setCypherFilter(queryField.getText());
 				try {
@@ -459,17 +638,24 @@ public class nwklr extends JApplet {
 		filterAndArrowPanel.setLayout(new BoxLayout(filterAndArrowPanel, BoxLayout.X_AXIS));
 		filterAndArrowPanel.add(filterButton);
 		filterAndArrowPanel.add(arrowCheckbox);
+		
+		statusField = new JTextField("Initializing...");
+		statusField.setEditable(false);
+		statusField.setFont(new Font(Font.MONOSPACED,Font.BOLD,8));
+		statusField.setMaximumSize(new Dimension(statusField.getMaximumSize().width,statusField.getFont().getSize()));
+		
 
 		JPanel jp = new JPanel();
 		jp.setLayout(new BoxLayout(jp, BoxLayout.Y_AXIS));
-		jp.add(modeBox);
 		jp.add(jcbLayout);
 		jp.add(queryPane);
 		jp.add(filterAndArrowPanel);
 		jp.add(propPane);
+		jp.add(statusField);
 		return jp;
 	} // getControlPanel()
 
+	
 	private static Class<?>[] getArrayOfLayouts() {
 		List<Class<?>> layouts = new ArrayList<Class<?>>();
 		layouts.add(KKLayout.class);
@@ -481,18 +667,18 @@ public class nwklr extends JApplet {
 		return (Class<?>[]) layouts.toArray(new Class<?>[0]);
 	}
 
+	
 	public static void main(String[] args) {
 		if (args.length != 1)
 			throw new IllegalArgumentException(
 					"Provide a single argument: the Neo4J base directory");
 		g_base = args[0];
-		g = new neoAsJungGraph(g_base + "/data/graph.db", g_base
-				+ "/conf/neo4j-server.properties");
+		g = new neoAsJungGraph(g_base + "/data/graph.db", g_base + "/conf/neo4j-server.properties");
 
 		// initialize a couple of things used both in cPanel and gPanel
 		mModalGraphMouse = new nwklrModalGraphMouse();
 		arrowCheckbox = new Checkbox("Arrows",false);
-
+		
 		gPanel = getGraphPanel();
 		cPanel = getControlPanel();
 		mainFrame = new JFrame();
