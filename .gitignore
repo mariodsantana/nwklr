@@ -1,4 +1,2 @@
-/dataset.json
-/merged.pcap
-/merged.pdml
-/merged.json
+*.class
+
